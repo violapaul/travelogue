@@ -112,8 +112,9 @@ def compute_embeddings(
     console.print(f"  Embedding {len(rows)} assets with {model}…")
     embedded_count = 0
     error_count = 0
+    log_every = max(1, len(rows) // 20)
 
-    for row in track(rows, description="  Embedding images…", console=console):
+    for row_idx, row in enumerate(rows):
         asset_id = row["id"]
         # Prefer web derivative; fall back to thumbnail, then source
         img_path = None
@@ -124,6 +125,9 @@ def compute_embeddings(
                 if candidate.exists():
                     img_path = candidate
                     break
+
+        if row_idx % log_every == 0:
+            console.print(f"  [{row_idx+1}/{len(rows)}] embedding {img_path.name if img_path else asset_id}…")
 
         if not img_path:
             console.print(f"  [yellow]No image file found for asset {asset_id}[/yellow]")

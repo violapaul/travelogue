@@ -193,7 +193,21 @@ def ingest_photo_dirs(
     skip_count = 0
     error_count = 0
 
-    # Build person_id -> Person lookup
+    # Ensure trip and people rows exist (idempotent)
+    with connect(db_path) as conn:
+        conn.execute(
+            """INSERT OR IGNORE INTO trips (id, title, timezone, description)
+            VALUES (?,?,?,?)""",
+            (cfg.trip.id, cfg.trip.title, cfg.trip.timezone, cfg.trip.description),
+        )
+        for person in cfg.people:
+            conn.execute(
+                """INSERT OR IGNORE INTO people (id, trip_id, display_name, source_label, attribution_mode)
+                VALUES (?,?,?,?,?)""",
+                (person.id, cfg.trip.id, person.display_name, person.source_label, person.attribution_mode),
+            )
+
+    # Build person source_label -> person_id lookup
     person_map = {p.source_label: p.id for p in cfg.people}
 
     for photo_input in cfg.inputs.photos:
@@ -211,9 +225,15 @@ def ingest_photo_dirs(
         console.print(f"  Found {len(files)} files in {src_dir}")
 
         deriv_base = trip_dir / "working" / "derivatives"
+        LOG_EVERY = max(1, len(files) // 20)  # log ~20 progress messages per directory
 
-        for src_path in track(files, description=f"  Ingesting {photo_input.path}…", console=console):
+        for file_idx, src_path in enumerate(files):
             try:
+                if file_idx % LOG_EVERY == 0:
+                    console.print(
+                        f"  [{file_idx+1}/{len(files)}] {src_path.name}"
+                    )
+
                 checksum = sha256_file(src_path)
 
                 # Check if already ingested
@@ -241,7 +261,6 @@ def ingest_photo_dirs(
                 cap_utc = None
                 cap_local = None
                 if cap_time:
-                    # EXIF time has no tz info; treat as local trip time
                     cap_local = cap_time.replace(tzinfo=tz)
                     cap_utc = cap_local.astimezone(timezone.utc)
 
@@ -255,18 +274,24 @@ def ingest_photo_dirs(
 
                 # Generate asset ID and derivative paths
                 asset_id = f"a_{uuid.uuid4().hex[:12]}"
-                rel_stem = src_path.stem
                 thumb_path = deriv_base / "thumbnails" / f"{asset_id}.jpg"
                 web_path = deriv_base / "web" / f"{asset_id}.jpg"
 
-                _make_derivative(src_path, thumb_path, THUMBNAIL_SIZE)
-                _make_derivative(src_path, web_path, WEB_SIZE)
+                thumb_ok = _make_derivative(src_path, thumb_path, THUMBNAIL_SIZE)
+                web_ok = _make_derivative(src_path, web_path, WEB_SIZE)
+
+                if not thumb_ok or not web_ok:
+                    console.print(f"  [yellow]Warning:[/yellow] derivative generation failed for {src_path.name}")
 
                 # Compute quality features from thumbnail (faster)
                 phash = _compute_phash(thumb_path if thumb_path.exists() else src_path)
                 blur = _compute_blur_score(thumb_path if thumb_path.exists() else src_path)
 
-                # Relative paths for portability
+                gps_str = f"  GPS: {lat:.4f},{lon:.4f}" if lat else "  no GPS"
+                ts_str = f"  time: {cap_local}" if cap_local else "  no timestamp"
+                if file_idx % LOG_EVERY == 0:
+                    console.print(f"    {ts_str}  {gps_str}")
+
                 def relpath(p: Path) -> str:
                     try:
                         return str(p.relative_to(trip_dir))

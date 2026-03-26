@@ -95,9 +95,26 @@ def trip_init(
         TRIP_YAML_TEMPLATE.format(trip_id=trip_id, title=resolved_title)
     )
 
-    # Initialize SQLite database
+    # Initialize SQLite database and insert the trip + people rows
     db_path = get_db_path(trips_root, trip_id)
     init_db(db_path)
+
+    # Seed trip and people records from the just-written config
+    from travelogue.config import TripConfig
+    from travelogue.db import connect
+    cfg = TripConfig.load(trip_yaml)
+    with connect(db_path) as conn:
+        conn.execute(
+            """INSERT OR IGNORE INTO trips (id, title, timezone, description)
+            VALUES (?,?,?,?)""",
+            (cfg.trip.id, cfg.trip.title, cfg.trip.timezone, cfg.trip.description),
+        )
+        for person in cfg.people:
+            conn.execute(
+                """INSERT OR IGNORE INTO people (id, trip_id, display_name, source_label, attribution_mode)
+                VALUES (?,?,?,?,?)""",
+                (person.id, cfg.trip.id, person.display_name, person.source_label, person.attribution_mode),
+            )
 
     console.print(
         Panel(

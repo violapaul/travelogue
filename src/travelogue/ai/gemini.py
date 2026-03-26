@@ -398,7 +398,8 @@ def enrich_trip(
                 (trip_id,),
             ).fetchall()]
         console.print(f"  Summarizing {len(days)} days…")
-        for day in track(days, description="  Days…", console=console):
+        for i, day in enumerate(days):
+            console.print(f"  [{i+1}/{len(days)}] day {day['local_date']}…")
             _summarize_day(client, model, db_path, trip_id, day, trip_dir, force=force)
 
     # Events
@@ -409,7 +410,8 @@ def enrich_trip(
                 (trip_id,),
             ).fetchall()]
         console.print(f"  Labeling {len(events)} events…")
-        for event in track(events, description="  Events…", console=console):
+        for i, event in enumerate(events):
+            console.print(f"  [{i+1}/{len(events)}] event {event['id']} at {event['start_time_local']}…")
             _label_event(client, model, db_path, trip_id, event, trip_dir, force=force)
 
     # Subject clusters
@@ -419,7 +421,8 @@ def enrich_trip(
                 "SELECT id FROM subject_clusters WHERE trip_id=?", (trip_id,)
             ).fetchall()]
         console.print(f"  Labeling {len(clusters)} subject clusters…")
-        for cluster in track(clusters, description="  Clusters…", console=console):
+        for i, cluster in enumerate(clusters):
+            console.print(f"  [{i+1}/{len(clusters)}] cluster {cluster['id']}…")
             _label_subject_cluster(client, model, db_path, trip_id, cluster, trip_dir, force=force)
 
     console.print("[green]AI enrichment complete.[/green]")
