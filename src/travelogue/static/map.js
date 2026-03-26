@@ -13,7 +13,42 @@
   map.addControl(new maplibregl.NavigationControl(), 'top-right');
 
   map.on('load', () => {
-    // Add event markers
+    // Route line (rendered first so it sits beneath markers)
+    if (MAP_DATA.route && MAP_DATA.route.features && MAP_DATA.route.features.length > 0) {
+      map.addSource('route', {
+        type: 'geojson',
+        data: MAP_DATA.route,
+      });
+      map.addLayer({
+        id: 'route-line',
+        type: 'line',
+        source: 'route',
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: {
+          'line-color': '#0f4c75',
+          'line-width': 2,
+          'line-opacity': 0.35,
+          'line-dasharray': [4, 3],
+        },
+      });
+    }
+
+    // GPX/KML traces (user-provided routes, more prominent)
+    if (MAP_DATA.gpx_traces && MAP_DATA.gpx_traces.length > 0) {
+      map.addSource('gpx', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: MAP_DATA.gpx_traces },
+      });
+      map.addLayer({
+        id: 'gpx-line',
+        type: 'line',
+        source: 'gpx',
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': '#3282b8', 'line-width': 2.5, 'line-opacity': 0.7 },
+      });
+    }
+
+    // Event markers source (clustered)
     map.addSource('events', {
       type: 'geojson',
       data: MAP_DATA.markers,
@@ -62,52 +97,51 @@
       },
     });
 
-    // GPX traces
-    if (MAP_DATA.gpx_traces && MAP_DATA.gpx_traces.length > 0) {
-      map.addSource('gpx', {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: MAP_DATA.gpx_traces },
-      });
-      map.addLayer({
-        id: 'gpx-line',
-        type: 'line',
-        source: 'gpx',
-        layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': '#3282b8', 'line-width': 2.5, 'line-opacity': 0.7 },
-      });
-    }
-
-    // Fit map to all markers
     fitToMarkers();
 
-    // Click: zoom into cluster
+    // Click cluster: zoom in to expand
     map.on('click', 'clusters', (e) => {
       const features = map.queryRenderedFeatures(e.point, { layers: ['clusters'] });
       const clusterId = features[0].properties.cluster_id;
       map.getSource('events').getClusterExpansionZoom(clusterId, (err, zoom) => {
         if (err) return;
-        map.easeTo({ center: features[0].geometry.coordinates, zoom });
+        map.flyTo({ center: features[0].geometry.coordinates, zoom, duration: 600 });
       });
     });
 
-    // Click: show popup for event point
+    // Click event marker: fly to it + show popup
     map.on('click', 'event-points', (e) => {
       const props = e.features[0].properties;
       const coords = e.features[0].geometry.coordinates.slice();
+
+      const currentZoom = map.getZoom();
+      const targetZoom = Math.max(currentZoom + 2, 13);
+
+      map.flyTo({
+        center: coords,
+        zoom: targetZoom,
+        duration: 600,
+      });
+
       const thumb = props.thumbnail ? `<img src="/${props.thumbnail}" alt="">` : '';
+      const photoLabel = props.asset_count === 1 ? '1 photo' : `${props.asset_count} photos`;
       const html = `
         <div class="map-popup">
           ${thumb}
           <div class="map-popup-body">
             <h4>${props.title || 'Event'}</h4>
-            <p>${props.date || ''}</p>
+            <p>${props.date || ''} &middot; ${photoLabel}</p>
             <a href="/events/${props.event_id}.html">View event &rarr;</a>
           </div>
         </div>`;
-      new maplibregl.Popup({ closeButton: true, maxWidth: '220px' })
-        .setLngLat(coords)
-        .setHTML(html)
-        .addTo(map);
+
+      // Small delay so the fly animation starts before the popup appears
+      setTimeout(() => {
+        new maplibregl.Popup({ closeButton: true, maxWidth: '240px', offset: 14 })
+          .setLngLat(coords)
+          .setHTML(html)
+          .addTo(map);
+      }, 300);
     });
 
     map.on('mouseenter', 'clusters', () => { map.getCanvas().style.cursor = 'pointer'; });
@@ -132,20 +166,31 @@
   document.querySelectorAll('.map-filter').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.map-filter').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
+      btn.classList.add(  'active');
 
       const filter = btn.dataset.filter;
       if (filter === 'all') {
         map.setFilter('event-points', ['!', ['has', 'point_count']]);
+        map.setLayoutProperty('clusters', 'visibility', 'visible');
+        map.setLayoutProperty('cluster-count', 'visibility', 'visible');
+        if (map.getLayer('route-line')) map.setLayoutProperty('route-line', 'visibility', 'visible');
+        fitToMarkers();
       } else {
         map.setFilter('event-points', ['all',
           ['!', ['has', 'point_count']],
           ['==', ['get', 'day_id'], filter],
         ]);
-        // Fit to day bounds
+        map.setLayoutProperty('clusters', 'visibility', 'none');
+        map.setLayoutProperty('cluster-count', 'visibility', 'none');
+        if (map.getLayer('route-line')) map.setLayoutProperty('route-line', 'visibility', 'none');
+
         if (MAP_DATA.day_bounds && MAP_DATA.day_bounds[filter]) {
           const b = MAP_DATA.day_bounds[filter];
-          map.fitBounds([[b.min_lon, b.min_lat], [b.max_lon, b.max_lat]], { padding: 60 });
+          map.fitBounds([[b.min_lon, b.min_lat], [b.max_lon, b.max_lat]], {
+            padding: 80,
+            maxZoom: 15,
+            duration: 600,
+          });
         }
       }
     });
