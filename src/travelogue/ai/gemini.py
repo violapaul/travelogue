@@ -9,15 +9,14 @@ All outputs are cached in ai_artifacts; re-runs are free if inputs haven't chang
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 from pathlib import Path
 from typing import Any
 
-import logging
-
 from google import genai
-from google.genai import types as genai_types
+from google.genai import types
 from pydantic import BaseModel
 
 from travelogue.ai.cache import get_cached, make_hash, save_artifact
@@ -26,10 +25,9 @@ from travelogue.db import connect
 
 log = logging.getLogger(__name__)
 PROVIDER = "gemini"
-DEFAULT_MODEL = "gemini-2.0-flash"
+DEFAULT_MODEL = "gemini-2.0-flash-exp"
 RETRY_DELAYS = [2, 5, 15]
 
-# Prompt version — bump to invalidate all cached AI outputs
 PROMPT_VERSION = "v1"
 
 
@@ -46,7 +44,7 @@ class EventLabel(BaseModel):
 
 class SubjectLabel(BaseModel):
     label: str
-    cluster_type: str  # wildlife/food/landscape/architecture/transportation/people/other
+    cluster_type: str
 
 
 class JournalDraft(BaseModel):
@@ -68,29 +66,29 @@ def _call_gemini(
     images: list[Path] | None = None,
 ) -> dict[str, Any] | None:
     """Call Gemini with structured output. Returns parsed dict or None on failure."""
-    parts = []
+    content_parts: list[types.Part] = []
     if images:
-        for img_path in images[:4]:  # limit to 4 images per call
+        for i, img_path in enumerate(images[:4]):
             try:
                 with open(img_path, "rb") as f:
                     data = f.read()
                 suffix = img_path.suffix.lower()
                 mime = "image/jpeg" if suffix in (".jpg", ".jpeg") else "image/png"
-                parts.append(genai_types.Part(
-                    inline_data=genai_types.Blob(mime_type=mime, data=data)
-                ))
-            except Exception:
-                pass
-    parts.append(genai_types.Part(text=prompt))
+                content_parts.append(types.Part.from_text(f"Image {i + 1}:"))
+                content_parts.append(types.Part.from_bytes(data=data, mime_type=mime))
+            except Exception as exc:
+                log.debug("Could not load image %s: %s", img_path.name, exc)
+    content_parts.append(types.Part.from_text(prompt))
 
     for attempt, delay in enumerate([0] + RETRY_DELAYS):
         if delay:
+            log.debug("Retry %d (waiting %ds)", attempt, delay)
             time.sleep(delay)
         try:
             response = client.models.generate_content(
                 model=model,
-                contents=genai_types.Content(parts=parts),
-                config=genai_types.GenerateContentConfig(
+                contents=content_parts,
+                config=types.GenerateContentConfig(
                     response_mime_type="application/json",
                     response_schema=schema,
                     temperature=0.4,
@@ -98,7 +96,9 @@ def _call_gemini(
             )
             return json.loads(response.text)
         except Exception as exc:
+            log.warning("Gemini call attempt %d failed: %s", attempt + 1, exc)
             if attempt == len(RETRY_DELAYS):
+                log.error("Gemini call failed after %d attempts", attempt + 1)
                 return None
     return None
 
@@ -116,7 +116,6 @@ def _summarize_day(
     day_id = day["id"]
     local_date = day["local_date"]
 
-    # Build input context
     with connect(db_path) as conn:
         events = conn.execute(
             "SELECT id, title, start_time_local, end_time_local FROM events WHERE day_id=? ORDER BY order_index",
@@ -131,11 +130,9 @@ def _summarize_day(
             (day_id,),
         ).fetchall()
         journal = conn.execute(
-            """SELECT raw_markdown FROM journal_sources
-            WHERE trip_id=? AND parsed_date=?""",
+            "SELECT raw_markdown FROM journal_sources WHERE trip_id=? AND parsed_date=?",
             (trip_id, local_date),
         ).fetchone()
-        # Get a few representative thumbnail paths
         thumb_rows = conn.execute(
             """SELECT a.thumbnail_path FROM assets a
             JOIN event_assets ea ON ea.asset_id = a.id
@@ -157,6 +154,7 @@ def _summarize_day(
     if not force:
         cached = get_cached(db_path, trip_id, "day", day_id, PROVIDER, "summarize_day", input_hash, prompt_hash)
         if cached:
+            log.debug("Day %s already cached", local_date)
             return
 
     place_str = ", ".join(p["name"] for p in places) if places else "unknown location"
@@ -179,11 +177,11 @@ Return JSON with fields: title (short, evocative, 3-8 words), summary (2-3 sente
 
     result = _call_gemini(client, model, prompt, DaySummary, images=images)
     if result:
+        log.debug("Day %s → %s", local_date, result.get("title", "?"))
         save_artifact(
             db_path, trip_id, "day", day_id, PROVIDER, model,
             "summarize_day", input_hash, prompt_hash, result
         )
-        # Write as AI draft narrative block
         _upsert_narrative_block(
             db_path, trip_id, "day", day_id, "ai_draft",
             result.get("summary", ""),
@@ -235,6 +233,7 @@ def _label_event(
     if not force:
         cached = get_cached(db_path, trip_id, "event", event_id, PROVIDER, "label_event", input_hash, prompt_hash)
         if cached:
+            log.debug("Event %s already cached", event_id)
             return
 
     place_str = place["name"] if place else "unknown location"
@@ -257,11 +256,11 @@ Look at the attached photos and return JSON with:
 
     result = _call_gemini(client, model, prompt, EventLabel, images=images)
     if result:
+        log.debug("Event %s → %s (%s)", event_id, result.get("title", "?"), result.get("event_type", "?"))
         save_artifact(
             db_path, trip_id, "event", event_id, PROVIDER, model,
             "label_event", input_hash, prompt_hash, result
         )
-        # Update event title and type in DB
         with connect(db_path) as conn:
             conn.execute(
                 "UPDATE events SET title=?, event_type=? WHERE id=?",
@@ -305,6 +304,7 @@ def _label_subject_cluster(
     if not force:
         cached = get_cached(db_path, trip_id, "subject_cluster", cluster_id, PROVIDER, "label_subject", input_hash, prompt_hash)
         if cached:
+            log.debug("Cluster %s already cached", cluster_id)
             return
 
     prompt = f"""Look at these {member_count} photos from a travel trip. They were grouped together because they are visually similar.
@@ -323,6 +323,7 @@ Return JSON with:
 
     result = _call_gemini(client, model, prompt, SubjectLabel, images=images)
     if result:
+        log.debug("Cluster %s → %s (%s)", cluster_id, result.get("label", "?"), result.get("cluster_type", "?"))
         save_artifact(
             db_path, trip_id, "subject_cluster", cluster_id, PROVIDER, model,
             "label_subject", input_hash, prompt_hash, result
@@ -356,10 +357,9 @@ def _upsert_narrative_block(
 
         if existing:
             if existing["locked"]:
-                return  # Never overwrite locked (human-edited) content
+                return
             conn.execute(
-                """UPDATE narrative_blocks SET content_markdown=?, updated_at=?
-                WHERE id=?""",
+                "UPDATE narrative_blocks SET content_markdown=?, updated_at=? WHERE id=?",
                 (content, datetime.now(timezone.utc).isoformat(), existing["id"]),
             )
         else:

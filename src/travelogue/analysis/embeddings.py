@@ -9,7 +9,7 @@ from pathlib import Path
 
 import numpy as np
 from google import genai
-from google.genai import types as genai_types
+from google.genai import types
 
 from travelogue.config import TripConfig
 from travelogue.db import connect
@@ -38,6 +38,8 @@ def _embed_one(client: genai.Client, img_path: Path, model: str) -> np.ndarray |
     with open(img_path, "rb") as f:
         image_bytes = f.read()
 
+    image_part = types.Part.from_bytes(data=image_bytes, mime_type=mime)
+
     for attempt, delay in enumerate([0] + RETRY_DELAYS):
         if delay:
             log.debug("Retry %d for %s (waiting %ds)", attempt, img_path.name, delay)
@@ -45,11 +47,7 @@ def _embed_one(client: genai.Client, img_path: Path, model: str) -> np.ndarray |
         try:
             response = client.models.embed_content(
                 model=model,
-                contents=genai_types.Content(
-                    parts=[genai_types.Part(
-                        inline_data=genai_types.Blob(mime_type=mime, data=image_bytes)
-                    )]
-                ),
+                contents=image_part,
             )
             return np.array(response.embeddings[0].values, dtype=np.float32)
         except Exception as exc:
