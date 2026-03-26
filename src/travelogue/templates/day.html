@@ -14,15 +14,41 @@
   {% endif %}
 
   {% for event in day.events %}
+  {% set photo_count = event.assets|length %}
+
+  {% if photo_count <= 3 %}
+  {# Compact rendering: inline strip with time label #}
+  <div class="event-compact" id="event-{{ event.id }}">
+    <div class="event-compact-meta">
+      <span class="event-compact-time">{{ event.start_time | timefmt }}</span>
+      {% if event.title and event.title != ("Event " ~ loop.index) %}
+      <a href="/events/{{ event.id }}.html" class="event-compact-title">{{ event.title }}</a>
+      {% endif %}
+    </div>
+    <div class="event-compact-images">
+      {% for asset in event.assets %}
+      {% if asset.thumbnail_path %}
+      <img src="/{{ asset.web_path or asset.thumbnail_path }}" alt="" loading="lazy"
+           onclick="openLightbox('/{{ asset.web_path }}')" class="event-compact-img">
+      {% endif %}
+      {% endfor %}
+    </div>
+    {% if event.narrative %}
+    <p class="event-compact-narrative">{{ event.narrative }}</p>
+    {% endif %}
+  </div>
+
+  {% else %}
+  {# Full rendering: hero + grid for events with enough photos #}
   <section class="event-section" id="event-{{ event.id }}">
     <div class="event-header">
       {% if event.title %}
       <h2><a href="/events/{{ event.id }}.html">{{ event.title }}</a></h2>
       {% endif %}
-      <p class="event-time">{{ event.start_time | timefmt }}{% if event.end_time and event.end_time != event.start_time %} &ndash; {{ event.end_time | timefmt }}{% endif %} &middot; {{ event.asset_count }} photo{{ "s" if event.asset_count != 1 }}</p>
+      <p class="event-time">{{ event.start_time | timefmt }}{% if event.end_time and event.end_time != event.start_time %} &ndash; {{ event.end_time | timefmt }}{% endif %} &middot; {{ event.asset_count }} photos</p>
     </div>
 
-    {% if event.hero and event.hero.web_path and event.assets|length > 1 %}
+    {% if event.hero and event.hero.web_path %}
     <div class="event-hero">
       <img src="/{{ event.hero.web_path }}" alt="{{ event.title }}" loading="lazy"
            onclick="openLightbox('/{{ event.hero.web_path }}')">
@@ -36,7 +62,7 @@
     {% if event.assets %}
     <div class="image-grid">
       {% for asset in event.assets %}
-      {% if asset.thumbnail_path and (event.assets|length == 1 or asset.id != event.hero.id) %}
+      {% if asset.thumbnail_path and (not event.hero or asset.id != event.hero.id) %}
       <div class="grid-item">
         <img src="/{{ asset.thumbnail_path }}" alt="" loading="lazy"
              onclick="openLightbox('/{{ asset.web_path }}')">
@@ -58,6 +84,8 @@
     </div>
     {% endif %}
   </section>
+  {% endif %}
+
   {% endfor %}
 </div>
 
