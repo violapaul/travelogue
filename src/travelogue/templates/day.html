@@ -19,12 +19,13 @@
       {% if event.title %}
       <h2><a href="/events/{{ event.id }}.html">{{ event.title }}</a></h2>
       {% endif %}
-      <p class="event-time">{{ event.start_time | timefmt }}{% if event.end_time %} &ndash; {{ event.end_time | timefmt }}{% endif %} &middot; {{ event.asset_count }} photos</p>
+      <p class="event-time">{{ event.start_time | timefmt }}{% if event.end_time and event.end_time != event.start_time %} &ndash; {{ event.end_time | timefmt }}{% endif %} &middot; {{ event.asset_count }} photo{{ "s" if event.asset_count != 1 }}</p>
     </div>
 
-    {% if event.hero and event.hero.web_path %}
+    {% if event.hero and event.hero.web_path and event.assets|length > 1 %}
     <div class="event-hero">
-      <img src="/{{ event.hero.web_path }}" alt="{{ event.title }}" loading="lazy">
+      <img src="/{{ event.hero.web_path }}" alt="{{ event.title }}" loading="lazy"
+           onclick="openLightbox('/{{ event.hero.web_path }}')">
     </div>
     {% endif %}
 
@@ -35,10 +36,10 @@
     {% if event.assets %}
     <div class="image-grid">
       {% for asset in event.assets %}
-      {% if asset.thumbnail_path %}
+      {% if asset.thumbnail_path and (event.assets|length == 1 or asset.id != event.hero.id) %}
       <div class="grid-item">
         <img src="/{{ asset.thumbnail_path }}" alt="" loading="lazy"
-             onclick="openLightbox('{{ asset.web_path }}')">
+             onclick="openLightbox('/{{ asset.web_path }}')">
         {% if asset.alt_count > 0 %}
         <span class="alt-badge">+{{ asset.alt_count }}</span>
         {% endif %}

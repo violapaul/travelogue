@@ -11,16 +11,10 @@
     </p>
     <h1>{{ event.title or "Event" }}</h1>
     <p class="page-date">
-      {{ event.start_time | timefmt }}{% if event.end_time %} &ndash; {{ event.end_time | timefmt }}{% endif %}
-      &middot; {{ event.asset_count }} photos
+      {{ event.start_time | timefmt }}{% if event.end_time and event.end_time != event.start_time %} &ndash; {{ event.end_time | timefmt }}{% endif %}
+      &middot; {{ event.asset_count }} photo{{ "s" if event.asset_count != 1 }}
     </p>
   </header>
-
-  {% if event.hero and event.hero.web_path %}
-  <div class="event-hero-full">
-    <img src="/{{ event.hero.web_path }}" alt="{{ event.title }}" loading="lazy">
-  </div>
-  {% endif %}
 
   {% if event.narrative %}
   <div class="narrative event-narrative">{{ event.narrative }}</div>
