@@ -2,7 +2,7 @@
 {% block title %}Map &mdash; {{ trip_title }}{% endblock %}
 
 {% block head %}
-<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css">
+<link rel="stylesheet" href="{{ base }}static/maplibre-gl.css">
 {% endblock %}
 
 {% block content %}
@@ -18,10 +18,30 @@
   </div>
   <div id="map" class="map-container"></div>
 </div>
+
+<!-- Map photo lightbox -->
+<div class="map-lightbox" id="map-lightbox" hidden>
+  <div class="map-lightbox-overlay" id="map-lightbox-overlay"></div>
+  <div class="map-lightbox-shell">
+    <div class="map-lightbox-topbar">
+      <span class="map-lightbox-counter" id="map-lightbox-counter"></span>
+      <button class="map-lightbox-close" id="map-lightbox-close">&times;</button>
+    </div>
+    <div class="map-lightbox-stage">
+      <div class="map-lightbox-bg" id="map-lightbox-bg"></div>
+      <button class="map-lightbox-prev" id="map-lightbox-prev">&#8249;</button>
+      <div class="map-lightbox-img-wrap">
+        <img id="map-lightbox-img" src="" alt="">
+      </div>
+      <button class="map-lightbox-next" id="map-lightbox-next">&#8250;</button>
+    </div>
+    <div class="map-lightbox-filmstrip" id="map-lightbox-filmstrip"></div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
-<script src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js"></script>
-<script src="/map_data.js"></script>
-<script src="/static/map.js"></script>
+<script src="{{ base }}static/maplibre-gl.js"></script>
+<script src="{{ base }}map_data.js"></script>
+<script src="{{ base }}static/map.js"></script>
 {% endblock %}

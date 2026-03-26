@@ -5,8 +5,8 @@
 <div class="page-wrapper">
   <header class="page-header">
     <p class="breadcrumb">
-      <a href="/story.html">Story</a> &rsaquo;
-      <a href="/days/{{ day.date }}.html">{{ day.title or day.date }}</a> &rsaquo;
+      <a href="{{ base }}story.html">Story</a> &rsaquo;
+      <a href="{{ base }}days/{{ day.date }}.html">{{ day.title or day.date }}</a> &rsaquo;
       Event
     </p>
     <h1>{{ event.title or "Event" }}</h1>
@@ -31,8 +31,8 @@
   <div class="image-grid image-grid-large">
     {% for asset in event.assets %}
     {% if asset.web_path %}
-    <div class="grid-item">
-      <img src="/{{ asset.web_path }}" alt="" loading="lazy"
+    <div class="grid-item" id="photo-{{ asset.id }}">
+      <img src="{{ base }}{{ asset.web_path }}" alt="" loading="lazy"
            onclick="openLightboxFromGrid({{ loop.index0 }})">
       {% if asset.alt_count > 0 %}
       <span class="alt-badge">+{{ asset.alt_count }} similar</span>
@@ -59,10 +59,20 @@
 const IMAGES = [
   {% for asset in event.assets %}
   {% if asset.web_path %}
-  "/{{ asset.web_path }}",
+  "{{ base }}{{ asset.web_path }}",
   {% endif %}
   {% endfor %}
 ];
 </script>
-<script src="/static/lightbox.js"></script>
+<script src="{{ base }}static/lightbox.js"></script>
+<script>
+if (window.location.hash) {
+  const target = document.querySelector(window.location.hash);
+  if (target) {
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const img = target.querySelector('img');
+    if (img) img.click();
+  }
+}
+</script>
 {% endblock %}

@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import numpy as np
@@ -16,9 +19,10 @@ from travelogue.db import connect
 
 log = logging.getLogger(__name__)
 
-EMBEDDING_MODEL = "gemini-embedding-exp-03-07"
+EMBEDDING_MODEL = "gemini-embedding-2-preview"
 EMBEDDING_DIM = 3072
 RETRY_DELAYS = [2, 5, 15]
+DEFAULT_WORKERS = 8
 
 
 def _get_client() -> genai.Client:
@@ -29,6 +33,11 @@ def _get_client() -> genai.Client:
             "Export it before running: export GEMINI_API_KEY=your_key"
         )
     return genai.Client(api_key=api_key)
+
+
+def _progress(msg: str) -> None:
+    """Print flushed progress line (survives conda run buffering)."""
+    print(msg, file=sys.stderr, flush=True)
 
 
 def _embed_one(client: genai.Client, img_path: Path, model: str) -> np.ndarray | None:
@@ -58,17 +67,39 @@ def _embed_one(client: genai.Client, img_path: Path, model: str) -> np.ndarray |
     return None
 
 
+def _resolve_image_path(row: dict, trip_dir: Path) -> Path | None:
+    for col in ("web_path", "thumbnail_path", "source_path"):
+        p = row[col]
+        if p:
+            candidate = trip_dir / p if not Path(p).is_absolute() else Path(p)
+            if candidate.exists():
+                return candidate
+    return None
+
+
 def compute_embeddings(
     trip_id: str,
     trip_dir: Path,
     db_path: Path,
     cfg: TripConfig,
+    max_workers: int = DEFAULT_WORKERS,
 ) -> int:
     """Compute embeddings for all assets that don't have one yet. Returns count embedded."""
     model = EMBEDDING_MODEL
     client = _get_client()
 
     with connect(db_path) as conn:
+        total_assets = conn.execute(
+            "SELECT COUNT(*) FROM assets WHERE trip_id = ?", (trip_id,)
+        ).fetchone()[0]
+
+        cached = conn.execute(
+            """SELECT COUNT(*) FROM asset_features af
+            JOIN assets a ON a.id = af.asset_id
+            WHERE a.trip_id = ? AND af.embedding IS NOT NULL AND af.embedding_model = ?""",
+            (trip_id, model),
+        ).fetchone()[0]
+
         rows = conn.execute(
             """SELECT a.id, a.web_path, a.thumbnail_path, a.source_path
             FROM assets a
@@ -78,54 +109,74 @@ def compute_embeddings(
             (trip_id, model),
         ).fetchall()
 
-    total = len(rows)
-    if total == 0:
-        log.info("All assets already embedded — nothing to do")
+    need = len(rows)
+    _progress(f"Embeddings: {total_assets} assets total, {cached} cached, {need} to compute")
+
+    if need == 0:
+        _progress("All assets already embedded — nothing to do")
         return 0
 
-    log.info("Embedding %d assets using %s", total, model)
+    # Resolve image paths upfront and filter out missing files
+    work_items: list[tuple[str, Path]] = []
+    skipped = 0
+    for row in rows:
+        img_path = _resolve_image_path(dict(row), trip_dir)
+        if img_path:
+            work_items.append((row["id"], img_path))
+        else:
+            log.warning("No image file found for asset %s — skipping", row["id"])
+            skipped += 1
+
+    _progress(f"Computing {len(work_items)} embeddings with {max_workers} workers...")
+
+    lock = threading.Lock()
+    done = 0
     embedded_count = 0
-    error_count = 0
-    log_every = max(1, total // 20)
+    error_count = skipped
+    t0 = time.monotonic()
 
-    for idx, row in enumerate(rows):
-        asset_id = row["id"]
+    def _do_one(asset_id: str, img_path: Path) -> tuple[str, np.ndarray | None]:
+        return asset_id, _embed_one(client, img_path, model)
 
-        img_path = None
-        for col in ("web_path", "thumbnail_path", "source_path"):
-            p = row[col]
-            if p:
-                candidate = trip_dir / p if not Path(p).is_absolute() else Path(p)
-                if candidate.exists():
-                    img_path = candidate
-                    break
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = {
+            pool.submit(_do_one, aid, p): (aid, p)
+            for aid, p in work_items
+        }
 
-        if idx % log_every == 0:
-            log.info("[%d/%d] %s", idx + 1, total, img_path.name if img_path else asset_id)
+        for future in as_completed(futures):
+            asset_id, vec = future.result()
 
-        if not img_path:
-            log.warning("No image file found for asset %s — skipping", asset_id)
-            error_count += 1
-            continue
+            with lock:
+                done += 1
+                if vec is not None:
+                    with connect(db_path) as conn:
+                        conn.execute(
+                            """INSERT INTO asset_features (asset_id, embedding, embedding_model)
+                            VALUES (?, ?, ?)
+                            ON CONFLICT(asset_id) DO UPDATE SET
+                                embedding = excluded.embedding,
+                                embedding_model = excluded.embedding_model""",
+                            (asset_id, vec.tobytes(), model),
+                        )
+                    embedded_count += 1
+                else:
+                    error_count += 1
 
-        vec = _embed_one(client, img_path, model)
-        if vec is None:
-            error_count += 1
-            continue
+                elapsed = time.monotonic() - t0
+                rate = done / elapsed if elapsed > 0 else 0
+                eta = (len(work_items) - done) / rate if rate > 0 else 0
+                _progress(
+                    f"  [{done}/{len(work_items)}] "
+                    f"{done * 100 // len(work_items)}% "
+                    f"({rate:.1f}/s, ~{eta:.0f}s remaining)"
+                )
 
-        with connect(db_path) as conn:
-            conn.execute(
-                """INSERT INTO asset_features (asset_id, embedding, embedding_model)
-                VALUES (?, ?, ?)
-                ON CONFLICT(asset_id) DO UPDATE SET
-                    embedding = excluded.embedding,
-                    embedding_model = excluded.embedding_model""",
-                (asset_id, vec.tobytes(), model),
-            )
-        embedded_count += 1
-        log.debug("  Embedded %s (dim=%d)", asset_id, len(vec))
-
-    log.info("Embedding complete — embedded: %d, errors: %d", embedded_count, error_count)
+    elapsed = time.monotonic() - t0
+    _progress(
+        f"Embedding complete — embedded: {embedded_count}, errors: {error_count}, "
+        f"time: {elapsed:.1f}s"
+    )
     return embedded_count
 
 

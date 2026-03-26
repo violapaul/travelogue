@@ -1,0 +1,41 @@
+trip:
+  id: nz-aus-early
+  title: NZ & Australia Early Days
+  timezone: Australia/Sydney
+  description: "First 100 photos — arrival and Sydney (Mar 13–15)"
+
+people:
+  - id: p1
+    display_name: Paul
+    source_label: first100
+    attribution_mode: minimal
+
+inputs:
+  photos:
+    - path: imports/originals/first100
+      person_id: p1
+  journals:
+    - journals/
+
+ai:
+  default_provider: gemini
+  providers:
+    gemini:
+      model: gemini-3-flash-preview
+  tasks:
+    summarize_days: true
+    summarize_events: true
+    label_subjects: true
+    draft_missing_journal_text: false
+
+render:
+  theme: editorial
+  default_view: everything
+  show_maps: true
+  attribution: minimal
+
+deploy:
+  target: local
+  private: true
+  bucket: ""
+  distribution_id: ""

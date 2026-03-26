@@ -90,7 +90,7 @@ def cluster_subjects(trip_id: str, db_path: Path) -> int:
             member_rows = [rows[i] for i in indices]
 
             best_idx = max(range(len(member_rows)), key=lambda i: _quality_score(
-                member_rows[i].get("blur_score"), member_rows[i].get("width"), member_rows[i].get("height")
+                dict(member_rows[i]).get("blur_score"), dict(member_rows[i]).get("width"), dict(member_rows[i]).get("height")
             ))
             hero_id = members[best_idx]
 

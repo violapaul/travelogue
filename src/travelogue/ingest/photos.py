@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo
 
 import exifread
 import imagehash
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 from travelogue.config import TripConfig
 from travelogue.db import connect
@@ -112,6 +112,9 @@ def _extract_orientation(exif: dict[str, Any]) -> int:
 def _make_derivative(src: Path, dest: Path, longest_edge: int) -> bool:
     try:
         with Image.open(src) as img:
+            # Normalize EXIF rotation before resizing so landscape phone photos
+            # are saved with the expected pixel orientation in derivatives.
+            img = ImageOps.exif_transpose(img)
             img = img.convert("RGB")
             w, h = img.size
             scale = longest_edge / max(w, h)
@@ -243,6 +246,7 @@ def ingest_photo_dirs(
                 width = height = None
                 try:
                     with Image.open(src_path) as img:
+                        img = ImageOps.exif_transpose(img)
                         width, height = img.size
                 except (UnidentifiedImageError, Exception) as exc:
                     log.debug("Could not read dimensions for %s: %s", src_path.name, exc)

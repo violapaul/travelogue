@@ -289,21 +289,31 @@ def publish(trip_id: str = typer.Argument(...)) -> None:
 
 @app.command("serve")
 def serve(
-    trip_id: str = typer.Argument(...),
+    trip_id: str = typer.Argument(None, help="Trip ID, or omit to serve all published trips"),
     port: int = typer.Option(8080, "--port", "-p"),
 ) -> None:
-    """Start a local preview server for the generated site."""
-    from travelogue.deploy.preview import serve_site
+    """Start a local preview server. Pass a trip ID for one trip, or omit to serve all."""
     import logging
 
-    trip_dir, _ = require_trip(trip_id)
-    publish_dir = trip_dir / "publish"
-    if not publish_dir.exists() or not any(publish_dir.iterdir()):
-        console.print(f"[yellow]No published site found. Run:[/yellow] travelogue publish {trip_id}")
-        raise typer.Exit(1)
-    logging.getLogger("travelogue.cli").info("Serving %s at http://localhost:%d", trip_id, port)
-    console.print(f"[bold]Serving[/bold] http://localhost:{port}  (Ctrl-C to stop)")
-    serve_site(publish_dir, port=port)
+    if trip_id is None:
+        from travelogue.deploy.preview import serve_multi
+        trips_root = get_trips_root()
+        all_trips = [d.name for d in trips_root.iterdir() if d.is_dir() and (d / "publish").is_dir()]
+        if not all_trips:
+            console.print("[yellow]No published trips found.[/yellow]")
+            raise typer.Exit(1)
+        console.print(f"[bold]Serving {len(all_trips)} trip(s)[/bold] at http://localhost:{port}")
+        serve_multi(trips_root, all_trips, port=port)
+    else:
+        from travelogue.deploy.preview import serve_site
+        trip_dir, _ = require_trip(trip_id)
+        publish_dir = trip_dir / "publish"
+        if not publish_dir.exists() or not any(publish_dir.iterdir()):
+            console.print(f"[yellow]No published site found. Run:[/yellow] travelogue publish {trip_id}")
+            raise typer.Exit(1)
+        logging.getLogger("travelogue.cli").info("Serving %s at http://localhost:%d", trip_id, port)
+        console.print(f"[bold]Serving[/bold] http://localhost:{port}  (Ctrl-C to stop)")
+        serve_site(publish_dir, port=port)
 
 
 # ---------------------------------------------------------------------------

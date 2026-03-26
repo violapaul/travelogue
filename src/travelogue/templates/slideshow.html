@@ -24,11 +24,11 @@
     {% for asset in event.assets %}
     {% if asset.web_path %}
     <div class="slide-thumb {% if loop.index == 1 and loop.index0 == 0 %}active{% endif %}"
-         data-src="/{{ asset.web_path }}"
+         data-src="{{ base }}{{ asset.web_path }}"
          data-caption="{{ event.title or '' }} &middot; {{ day.date }}"
          onclick="goToSlide(slideThumbIndex(this))">
       {% if asset.thumbnail_path %}
-      <img src="/{{ asset.thumbnail_path }}" alt="" loading="lazy">
+      <img src="{{ base }}{{ asset.thumbnail_path }}" alt="" loading="lazy">
       {% endif %}
     </div>
     {% endif %}
@@ -40,5 +40,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/slideshow.js"></script>
+<script src="{{ base }}static/slideshow.js"></script>
 {% endblock %}

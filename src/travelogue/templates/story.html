@@ -13,7 +13,7 @@
     <header class="day-header">
       <div class="day-number">Day {{ loop.index }}</div>
       <h2 class="day-title">
-        <a href="/days/{{ day.date }}.html">{{ day.title or day.date | datefmt }}</a>
+        <a href="{{ base }}days/{{ day.date }}.html">{{ day.title or day.date | datefmt }}</a>
       </h2>
       {% if day.title and day.title != day.date %}
       <p class="day-date">{{ day.date | datefmt }}</p>
@@ -28,7 +28,7 @@
     <section class="event-section" id="event-{{ event.id }}">
       {% if event.hero and event.hero.web_path %}
       <div class="event-hero">
-        <img src="/{{ event.hero.web_path }}" alt="{{ event.title }}" loading="lazy">
+        <img src="{{ base }}{{ event.hero.web_path }}" alt="{{ event.title }}" loading="lazy">
         {% if event.hero.alt_count > 0 %}
         <button class="alt-count" data-event="{{ event.id }}">+{{ event.hero.alt_count }} more</button>
         {% endif %}
@@ -37,7 +37,7 @@
 
       <div class="event-body">
         {% if event.title %}
-        <h3><a href="/events/{{ event.id }}.html">{{ event.title }}</a></h3>
+        <h3><a href="{{ base }}events/{{ event.id }}.html">{{ event.title }}</a></h3>
         {% endif %}
         <p class="event-time">{{ event.start_time | timefmt }}{% if event.end_time %} &ndash; {{ event.end_time | timefmt }}{% endif %}</p>
         {% if event.narrative %}
@@ -50,7 +50,7 @@
         {% for asset in event.assets[1:7] %}
         {% if asset.thumbnail_path %}
         <div class="strip-item">
-          <img src="/{{ asset.thumbnail_path }}" alt="" loading="lazy">
+          <img src="{{ base }}{{ asset.thumbnail_path }}" alt="" loading="lazy">
           {% if asset.alt_count > 0 %}
           <span class="alt-badge">+{{ asset.alt_count }}</span>
           {% endif %}
@@ -59,7 +59,7 @@
         {% endfor %}
         {% if event.assets|length > 7 %}
         <div class="strip-item strip-more">
-          <a href="/events/{{ event.id }}.html">+{{ event.assets|length - 7 }} more</a>
+          <a href="{{ base }}events/{{ event.id }}.html">+{{ event.assets|length - 7 }} more</a>
         </div>
         {% endif %}
       </div>
@@ -89,5 +89,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/lightbox.js"></script>
+<script src="{{ base }}static/lightbox.js"></script>
 {% endblock %}

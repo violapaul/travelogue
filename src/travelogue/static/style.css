@@ -485,6 +485,66 @@ a:hover { text-decoration: underline; }
 .map-popup-body p { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.4rem; }
 .map-popup-body a { font-size: 0.82rem; font-weight: 600; color: var(--alpine); }
 
+/* Single-photo hover popup */
+.map-popup-hover {
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+  background: #fff;
+}
+.map-popup-hover-img {
+  width: 480px;
+  height: 300px;
+  object-fit: cover;
+  display: block;
+}
+.hover-popup-date {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  padding: 0.35rem 0.6rem;
+  margin: 0;
+  font-family: var(--sans);
+}
+
+/* Cluster hover popup — photo grid */
+.map-popup-cluster-hover {
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+  background: #fff;
+}
+.cluster-hover-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2px;
+}
+.cluster-hover-img {
+  width: 100%;
+  height: 140px;
+  object-fit: cover;
+  display: block;
+}
+.cluster-hover-date {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  padding: 0.35rem 0.6rem;
+  margin: 0;
+  font-family: var(--sans);
+}
+
+/* Photo anchor target highlight — applied when navigating from map */
+.grid-item:target {
+  outline: 3px solid var(--gold);
+  outline-offset: 3px;
+  border-radius: 4px;
+  animation: photo-highlight-fade 2.5s ease-out forwards;
+}
+@keyframes photo-highlight-fade {
+  0%   { outline-color: var(--gold); box-shadow: 0 0 0 6px rgba(232,168,56,0.35); }
+  60%  { outline-color: var(--gold); box-shadow: 0 0 0 6px rgba(232,168,56,0.15); }
+  100% { outline-color: transparent; box-shadow: none; }
+}
+
 /* ---- Everything page ---- */
 .everything-page { padding-bottom: 5rem; }
 .everything-header { padding: 4rem 0 2rem; }
@@ -675,6 +735,152 @@ a:hover { text-decoration: underline; }
 .lightbox-prev:hover, .lightbox-next:hover { background: rgba(255,255,255,0.3); }
 .lightbox-images { display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: center; }
 .lightbox-images img { max-height: 70vh; max-width: 45vw; object-fit: contain; }
+
+/* ---- Map lightbox ---- */
+.map-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+}
+.map-lightbox[hidden] { display: none; }
+.map-lightbox-overlay {
+  position: absolute;
+  inset: 0;
+  background: #0a0a0e;
+  cursor: pointer;
+}
+
+/* Shell: full viewport, column layout */
+.map-lightbox-shell {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  pointer-events: none; /* children re-enable */
+}
+
+/* Top bar: counter + close */
+.map-lightbox-topbar {
+  pointer-events: all;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1.25rem;
+  flex-shrink: 0;
+}
+.map-lightbox-counter {
+  color: rgba(255,255,255,0.55);
+  font-size: 0.82rem;
+  font-family: var(--sans);
+  letter-spacing: 0.05em;
+}
+.map-lightbox-close {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.7);
+  font-size: 2rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.1rem 0.4rem;
+  transition: color 0.15s;
+}
+.map-lightbox-close:hover { color: #fff; }
+
+/* Stage: takes all remaining height, holds nav + image */
+.map-lightbox-stage {
+  pointer-events: all;
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding: 0 0.5rem;
+  overflow: hidden;
+}
+
+/* Blurred ambient fill — same image behind the main photo, fills voids for portrait shots */
+.map-lightbox-bg {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  filter: blur(24px) brightness(0.35) saturate(1.4);
+  transform: scale(1.08); /* hide blur edge artefacts */
+  z-index: 0;
+}
+.map-lightbox-img-wrap {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem;
+}
+.map-lightbox-img-wrap img {
+  max-height: calc(100vh - 148px);
+  max-width: calc(100vw - 148px);
+  width: auto;
+  height: auto;
+  display: block;
+  border-radius: 3px;
+  box-shadow: 0 8px 48px rgba(0,0,0,0.8);
+}
+.map-lightbox-prev, .map-lightbox-next {
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+  background: rgba(0,0,0,0.35);
+  border: none;
+  color: rgba(255,255,255,0.8);
+  font-size: 2.2rem;
+  padding: 1.2rem 0.9rem;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.15s, color 0.15s;
+  line-height: 1;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+}
+.map-lightbox-prev:hover, .map-lightbox-next:hover {
+  background: rgba(0,0,0,0.6);
+  color: #fff;
+}
+
+/* Filmstrip: row of thumbnails at the bottom */
+.map-lightbox-filmstrip {
+  pointer-events: all;
+  flex-shrink: 0;
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+  padding: 0.6rem 1rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.map-lightbox-filmstrip::-webkit-scrollbar { display: none; }
+.map-lightbox-filmstrip img {
+  height: 56px;
+  width: auto;
+  max-width: 112px;
+  object-fit: contain;
+  border-radius: 3px;
+  cursor: pointer;
+  opacity: 0.45;
+  transition: opacity 0.15s, outline 0.1s;
+  flex-shrink: 0;
+  outline: 2px solid transparent;
+}
+.map-lightbox-filmstrip img.active {
+  opacity: 1;
+  outline: 2px solid var(--gold);
+}
+.map-lightbox-filmstrip img:hover { opacity: 0.8; }
 
 /* ---- Footer ---- */
 .site-footer {

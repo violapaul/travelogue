@@ -23,19 +23,19 @@
 
 <div class="page-wrapper">
   <nav class="view-nav">
-    <a href="/story.html" class="view-card">
+    <a href="{{ base }}story.html" class="view-card">
       <span class="view-icon">&#9776;</span>
       <span class="view-label">Story</span>
     </a>
-    <a href="/map.html" class="view-card">
+    <a href="{{ base }}map.html" class="view-card">
       <span class="view-icon">&#9711;</span>
       <span class="view-label">Map</span>
     </a>
-    <a href="/everything.html" class="view-card">
+    <a href="{{ base }}everything.html" class="view-card">
       <span class="view-icon">&#9783;</span>
       <span class="view-label">Everything</span>
     </a>
-    <a href="/slideshow.html" class="view-card">
+    <a href="{{ base }}slideshow.html" class="view-card">
       <span class="view-icon">&#9654;</span>
       <span class="view-label">Slideshow</span>
     </a>
@@ -45,9 +45,9 @@
     <h2>The Trip</h2>
     <div class="days-strip">
       {% for day in days %}
-      <a class="day-thumb" href="/days/{{ day.date }}.html">
+      <a class="day-thumb" href="{{ base }}days/{{ day.date }}.html">
         {% if day.events and day.events[0].hero and day.events[0].hero.thumbnail_path %}
-        <img src="/{{ day.events[0].hero.thumbnail_path }}" alt="{{ day.title or day.date }}" loading="lazy">
+        <img src="{{ base }}{{ day.events[0].hero.thumbnail_path }}" alt="{{ day.title or day.date }}" loading="lazy">
         {% else %}
         <div class="day-thumb-placeholder"></div>
         {% endif %}

@@ -47,11 +47,6 @@ def render_site(
     log.info("  %d days, %d events", len(ctx["days"]),
              sum(len(d["events"]) for d in ctx["days"]))
 
-    log.info("Generating map data")
-    map_data = generate_map_data(trip_id, trip_dir, db_path, ctx)
-    log.info("  %d map markers, %d GPX traces",
-             len(map_data["markers"]["features"]), len(map_data["gpx_traces"]))
-
     # Copy static assets
     if static_dir.exists():
         dest_static = publish_dir / "static"
@@ -66,7 +61,6 @@ def render_site(
         if not deriv_dest.exists():
             shutil.copytree(deriv_src, deriv_dest, dirs_exist_ok=True)
         else:
-            # Incremental: only copy missing files
             for src_file in deriv_src.rglob("*"):
                 if src_file.is_file():
                     rel = src_file.relative_to(deriv_src)
@@ -78,6 +72,14 @@ def render_site(
     # Rewrite image paths to be relative to publish/
     ctx = _rewrite_image_paths(ctx, trip_dir, publish_dir)
 
+    # Generate map data AFTER path rewriting so thumbnails use published paths
+    log.info("Generating map data")
+    map_data = generate_map_data(trip_id, trip_dir, db_path, ctx)
+    log.info("  %d photo markers, %d event markers, %d GPX traces",
+             len(map_data["markers"]["features"]),
+             len(map_data["events"]["features"]),
+             len(map_data["gpx_traces"]))
+
     # Write map_data.js
     map_js = publish_dir / "map_data.js"
     map_js.write_text(
@@ -86,6 +88,9 @@ def render_site(
     )
 
     # Render pages
+    # `base` is a relative prefix: "" for root pages, "../" for pages in subdirs.
+    # Templates use {{ base }} to build all internal URLs, so the site works
+    # at any mount point (standalone at / or under /<trip-id>/ in multi mode).
     shared = {
         "trip_id": trip_id,
         "trip_title": ctx["trip_title"],
@@ -94,26 +99,28 @@ def render_site(
         "cfg": cfg,
     }
 
-    _render_page(env, "home.html", publish_dir / "index.html", {**shared, **ctx})
-    _render_page(env, "story.html", publish_dir / "story.html", {**shared, **ctx})
-    _render_page(env, "map.html", publish_dir / "map.html", {**shared, "map_data": map_data})
-    _render_page(env, "everything.html", publish_dir / "everything.html", {**shared, **ctx})
-    _render_page(env, "slideshow.html", publish_dir / "slideshow.html", {**shared, **ctx})
+    root = {**shared, **ctx, "base": ""}
+    _render_page(env, "home.html", publish_dir / "index.html", root)
+    _render_page(env, "story.html", publish_dir / "story.html", root)
+    _render_page(env, "map.html", publish_dir / "map.html", {**root, "map_data": map_data})
+    _render_page(env, "everything.html", publish_dir / "everything.html", root)
+    _render_page(env, "slideshow.html", publish_dir / "slideshow.html", root)
 
-    # Per-day pages
+    # Per-day pages (one level deep)
+    sub = {**shared, **ctx, "base": "../"}
     days_dir = publish_dir / "days"
     days_dir.mkdir(exist_ok=True)
     for day in ctx["days"]:
         _render_page(env, "day.html", days_dir / f"{day['date']}.html",
-                     {**shared, "day": day})
+                     {**sub, "day": day})
 
-    # Per-event pages
+    # Per-event pages (one level deep)
     events_dir = publish_dir / "events"
     events_dir.mkdir(exist_ok=True)
     for day in ctx["days"]:
         for event in day["events"]:
             _render_page(env, "event.html", events_dir / f"{event['id']}.html",
-                         {**shared, "event": event, "day": day})
+                         {**sub, "event": event, "day": day})
 
     n_pages = _count_pages(ctx)
     log.info("Rendered %d pages to %s", n_pages, publish_dir)

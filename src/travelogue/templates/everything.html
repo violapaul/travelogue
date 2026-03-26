@@ -28,10 +28,10 @@
     <div class="everything-event">
       {% if event.hero and event.hero.web_path %}
       <div class="everything-hero">
-        <img src="/{{ event.hero.web_path }}" alt="{{ event.title }}" loading="lazy">
+        <img src="{{ base }}{{ event.hero.web_path }}" alt="{{ event.title }}" loading="lazy">
         {% if event.hero.alt_count > 0 %}
         <div class="everything-hero-alts">
-          <button onclick="openLightbox('/{{ event.hero.web_path }}')">{{ event.hero.alt_count }} similar photos</button>
+          <button onclick="openLightbox('{{ base }}{{ event.hero.web_path }}')">{{ event.hero.alt_count }} similar photos</button>
         </div>
         {% endif %}
       </div>
@@ -40,7 +40,7 @@
       <div class="page-wrapper">
         {% if event.title %}
         <h3 class="event-title-inline">
-          <a href="/events/{{ event.id }}.html">{{ event.title }}</a>
+          <a href="{{ base }}events/{{ event.id }}.html">{{ event.title }}</a>
         </h3>
         {% endif %}
         <p class="event-meta-inline">
@@ -64,8 +64,8 @@
       <div class="everything-strip page-wrapper">
         {% for asset in event.assets[1:9] %}
         {% if asset.thumbnail_path %}
-        <div class="strip-item" onclick="openLightbox('/{{ asset.web_path or asset.thumbnail_path }}')">
-          <img src="/{{ asset.thumbnail_path }}" alt="" loading="lazy">
+        <div class="strip-item" onclick="openLightbox('{{ base }}{{ asset.web_path or asset.thumbnail_path }}')">
+          <img src="{{ base }}{{ asset.thumbnail_path }}" alt="" loading="lazy">
           {% if asset.alt_count > 0 %}
           <span class="alt-badge">+{{ asset.alt_count }}</span>
           {% endif %}
@@ -74,7 +74,7 @@
         {% endfor %}
         {% if event.assets|length > 9 %}
         <div class="strip-item strip-more">
-          <a href="/events/{{ event.id }}.html">+{{ event.assets|length - 9 }}<br>more</a>
+          <a href="{{ base }}events/{{ event.id }}.html">+{{ event.assets|length - 9 }}<br>more</a>
         </div>
         {% endif %}
       </div>
@@ -95,5 +95,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/lightbox.js"></script>
+<script src="{{ base }}static/lightbox.js"></script>
 {% endblock %}

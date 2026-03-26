@@ -20,32 +20,53 @@ def generate_map_data(
 ) -> dict[str, Any]:
     """Build the map_data dict that is embedded in the site as map_data.js."""
 
-    features = []
+    photo_features = []
+    event_features = []
     for day in trip_context["days"]:
         for event in day["events"]:
+            # Per-photo markers
+            for asset in event["assets"]:
+                lat = asset.get("gps_lat")
+                lon = asset.get("gps_lon")
+                if not lat or not lon:
+                    continue
+                photo_features.append({
+                    "type": "Feature",
+                    "geometry": {"type": "Point", "coordinates": [lon, lat]},
+                    "properties": {
+                        "asset_id": asset["id"],
+                        "event_id": event["id"],
+                        "title": event["title"],
+                        "date": day["date"],
+                        "thumbnail": asset.get("thumbnail_path", ""),
+                        "web": asset.get("web_path", ""),
+                        "day_id": day["id"],
+                    },
+                })
+
+            # Per-event centroid marker
             hero = event.get("hero")
-            if not hero:
-                continue
             lats = [a["gps_lat"] for a in event["assets"] if a.get("gps_lat")]
             lons = [a["gps_lon"] for a in event["assets"] if a.get("gps_lon")]
             if not lats:
                 continue
             lat = sum(lats) / len(lats)
             lon = sum(lons) / len(lons)
-            features.append({
+            event_features.append({
                 "type": "Feature",
                 "geometry": {"type": "Point", "coordinates": [lon, lat]},
                 "properties": {
                     "event_id": event["id"],
                     "title": event["title"],
                     "date": day["date"],
-                    "thumbnail": hero.get("thumbnail_path", ""),
+                    "thumbnail": (hero or {}).get("thumbnail_path", ""),
                     "day_id": day["id"],
                     "asset_count": event["asset_count"],
                 },
             })
 
-    geojson = {"type": "FeatureCollection", "features": features}
+    photo_geojson = {"type": "FeatureCollection", "features": photo_features}
+    event_geojson = {"type": "FeatureCollection", "features": event_features}
 
     gpx_traces = _load_gpx_traces(trip_dir)
 
@@ -66,7 +87,8 @@ def generate_map_data(
             }
 
     return {
-        "markers": geojson,
+        "markers": photo_geojson,
+        "events": event_geojson,
         "gpx_traces": gpx_traces,
         "route": route,
         "day_bounds": day_bounds,
@@ -74,30 +96,30 @@ def generate_map_data(
 
 
 def _build_route(trip_context: dict[str, Any]) -> dict[str, Any]:
-    """Build a chronological route GeoJSON from event centroids.
+    """Build chronological route GeoJSON from individual photo GPS coordinates.
 
-    Connects event centroids in time order. Segments are split when the
-    gap between consecutive points exceeds ~500 km (likely a flight),
-    producing a MultiLineString so flights aren't drawn as straight lines
-    across the map.
+    Uses all geolocated photos in chronological order (days → events → assets),
+    so the route threads directly through the photo bubble locations.
+
+    Produces two segment types:
+    - "drive" for consecutive photos within FLIGHT_THRESHOLD_KM
+    - "flight" for longer jumps (likely a flight between locations)
     """
-    MAX_SEGMENT_KM = 500
+    import math
 
-    points: list[tuple[float, float, str]] = []
+    FLIGHT_THRESHOLD_KM = 500
+
+    points: list[tuple[float, float]] = []
     for day in trip_context["days"]:
         for event in day["events"]:
-            lats = [a["gps_lat"] for a in event["assets"] if a.get("gps_lat")]
-            lons = [a["gps_lon"] for a in event["assets"] if a.get("gps_lon")]
-            if not lats:
-                continue
-            lat = sum(lats) / len(lats)
-            lon = sum(lons) / len(lons)
-            points.append((lon, lat, day.get("id", "")))
+            for asset in event["assets"]:
+                lat = asset.get("gps_lat")
+                lon = asset.get("gps_lon")
+                if lat and lon:
+                    points.append((lon, lat))
 
     if len(points) < 2:
         return {"type": "FeatureCollection", "features": []}
-
-    import math
 
     def haversine_km(lon1: float, lat1: float, lon2: float, lat2: float) -> float:
         R = 6371.0
@@ -107,27 +129,40 @@ def _build_route(trip_context: dict[str, Any]) -> dict[str, Any]:
         a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
         return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
-    segments: list[list[list[float]]] = [[list(points[0][:2])]]
-    for i in range(1, len(points)):
-        prev = points[i - 1]
-        curr = points[i]
-        dist = haversine_km(prev[0], prev[1], curr[0], curr[1])
-        if dist > MAX_SEGMENT_KM:
-            segments.append([list(curr[:2])])
-        else:
-            segments[-1].append(list(curr[:2]))
-
     features = []
-    for seg in segments:
-        if len(seg) >= 2:
-            features.append({
-                "type": "Feature",
-                "geometry": {"type": "LineString", "coordinates": seg},
-                "properties": {"type": "route"},
-            })
+    current_type = None
+    current_coords: list[list[float]] = []
 
-    log.debug("Route: %d points, %d segments (split at >%d km)",
-              len(points), len(features), MAX_SEGMENT_KM)
+    for i in range(1, len(points)):
+        prev, curr = points[i - 1], points[i]
+        dist = haversine_km(prev[0], prev[1], curr[0], curr[1])
+        seg_type = "flight" if dist > FLIGHT_THRESHOLD_KM else "drive"
+
+        if seg_type != current_type:
+            if current_coords and len(current_coords) >= 2:
+                features.append({
+                    "type": "Feature",
+                    "geometry": {"type": "LineString", "coordinates": current_coords},
+                    "properties": {"type": current_type},
+                })
+            current_type = seg_type
+            current_coords = [list(prev)]
+
+        if not current_coords:
+            current_coords = [list(prev)]
+        current_coords.append(list(curr))
+
+    if current_coords and len(current_coords) >= 2:
+        features.append({
+            "type": "Feature",
+            "geometry": {"type": "LineString", "coordinates": current_coords},
+            "properties": {"type": current_type},
+        })
+
+    log.debug("Route: %d points, %d segments (%d drive, %d flight)",
+              len(points), len(features),
+              sum(1 for f in features if f["properties"]["type"] == "drive"),
+              sum(1 for f in features if f["properties"]["type"] == "flight"))
 
     return {"type": "FeatureCollection", "features": features}
 
