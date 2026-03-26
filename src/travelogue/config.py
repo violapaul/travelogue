@@ -27,7 +27,7 @@ class InputsConfig(BaseModel):
 
 
 class AiProviderConfig(BaseModel):
-    model: str = "gemini-2.0-flash"
+    model: str = "gemini-3-flash-preview"
 
 
 class AiTasksConfig(BaseModel):
@@ -108,7 +108,7 @@ ai:
   default_provider: gemini
   providers:
     gemini:
-      model: gemini-2.0-flash
+      model: gemini-3-flash-preview
   tasks:
     summarize_days: true
     summarize_events: true

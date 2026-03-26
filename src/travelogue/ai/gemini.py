@@ -25,7 +25,7 @@ from travelogue.db import connect
 
 log = logging.getLogger(__name__)
 PROVIDER = "gemini"
-DEFAULT_MODEL = "gemini-2.0-flash-exp"
+DEFAULT_MODEL = "gemini-3-flash-preview"
 RETRY_DELAYS = [2, 5, 15]
 
 PROMPT_VERSION = "v1"
