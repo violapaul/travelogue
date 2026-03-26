@@ -27,26 +27,42 @@ app.add_typer(trip_app, name="trip")
 app.add_typer(ingest_app, name="ingest")
 app.add_typer(analyze_app, name="analyze")
 
-# Default trips root — can be overridden via TRAVELOGUE_TRIPS_ROOT env var
 DEFAULT_TRIPS_ROOT = Path("trips")
+
+# Global verbosity state set by callback
+_verbosity: str = "normal"
+
+
+@app.callback()
+def global_options(
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show DEBUG-level detail per item."),
+    quiet: bool = typer.Option(False, "--quiet", "-q", help="Show WARNING and above only."),
+) -> None:
+    global _verbosity
+    if verbose:
+        _verbosity = "verbose"
+    elif quiet:
+        _verbosity = "quiet"
+    else:
+        _verbosity = "normal"
+
+    from travelogue.logging_config import setup_logging
+    setup_logging(_verbosity, console=console)
 
 
 def get_trips_root() -> Path:
     import os
-
     root = os.environ.get("TRAVELOGUE_TRIPS_ROOT")
     return Path(root) if root else DEFAULT_TRIPS_ROOT
 
 
 def require_trip(trip_id: str) -> tuple[Path, Path]:
-    """Return (trip_dir, db_path) and abort with a helpful message if the trip doesn't exist."""
     from travelogue.db import get_db_path
-
     trips_root = get_trips_root()
     trip_dir = trips_root / trip_id
     if not trip_dir.exists():
         console.print(f"[red]Trip '{trip_id}' not found at {trip_dir}[/red]")
-        console.print("Run: [bold]travelogue trip init {trip_id}[/bold]")
+        console.print(f"Run: [bold]travelogue trip init {trip_id}[/bold]")
         raise typer.Exit(1)
     db_path = get_db_path(trips_root, trip_id)
     return trip_dir, db_path
@@ -56,66 +72,52 @@ def require_trip(trip_id: str) -> tuple[Path, Path]:
 # trip commands
 # ---------------------------------------------------------------------------
 
-
 @trip_app.command("init")
 def trip_init(
     trip_id: str = typer.Argument(..., help="Unique trip identifier, e.g. australia-2026"),
     title: Annotated[Optional[str], typer.Option("--title", "-t")] = None,
 ) -> None:
     """Initialize a new trip workspace."""
-    from travelogue.config import TRIP_YAML_TEMPLATE
-    from travelogue.db import get_db_path, init_db
+    import logging
+    from travelogue.config import TRIP_YAML_TEMPLATE, TripConfig
+    from travelogue.db import connect, get_db_path, init_db
+
+    log = logging.getLogger("travelogue.cli")
 
     trips_root = get_trips_root()
     trip_dir = trips_root / trip_id
 
     if trip_dir.exists():
-        console.print(f"[yellow]Trip '{trip_id}' already exists at {trip_dir}[/yellow]")
+        log.warning("Trip '%s' already exists at %s", trip_id, trip_dir)
         raise typer.Exit(0)
 
-    # Create directory structure
     for subdir in [
-        "imports/originals",
-        "journals",
-        "overrides/days",
-        "overrides/events",
-        "overrides/places",
-        "overrides/subjects",
-        "generated/ai",
-        "generated/reports",
-        "working",
-        "publish",
+        "imports/originals", "journals",
+        "overrides/days", "overrides/events", "overrides/places", "overrides/subjects",
+        "generated/ai", "generated/reports", "working", "publish",
     ]:
         (trip_dir / subdir).mkdir(parents=True, exist_ok=True)
 
-    # Write trip.yaml
     resolved_title = title or trip_id.replace("-", " ").title()
     trip_yaml = trip_dir / "trip.yaml"
-    trip_yaml.write_text(
-        TRIP_YAML_TEMPLATE.format(trip_id=trip_id, title=resolved_title)
-    )
+    trip_yaml.write_text(TRIP_YAML_TEMPLATE.format(trip_id=trip_id, title=resolved_title))
 
-    # Initialize SQLite database and insert the trip + people rows
     db_path = get_db_path(trips_root, trip_id)
     init_db(db_path)
 
-    # Seed trip and people records from the just-written config
-    from travelogue.config import TripConfig
-    from travelogue.db import connect
     cfg = TripConfig.load(trip_yaml)
     with connect(db_path) as conn:
         conn.execute(
-            """INSERT OR IGNORE INTO trips (id, title, timezone, description)
-            VALUES (?,?,?,?)""",
+            "INSERT OR IGNORE INTO trips (id, title, timezone, description) VALUES (?,?,?,?)",
             (cfg.trip.id, cfg.trip.title, cfg.trip.timezone, cfg.trip.description),
         )
         for person in cfg.people:
             conn.execute(
-                """INSERT OR IGNORE INTO people (id, trip_id, display_name, source_label, attribution_mode)
-                VALUES (?,?,?,?,?)""",
+                "INSERT OR IGNORE INTO people (id, trip_id, display_name, source_label, attribution_mode) VALUES (?,?,?,?,?)",
                 (person.id, cfg.trip.id, person.display_name, person.source_label, person.attribution_mode),
             )
 
+    log.info("Trip '%s' initialized at %s", trip_id, trip_dir)
     console.print(
         Panel(
             f"[green]Trip workspace created:[/green] {trip_dir}\n\n"
@@ -138,22 +140,22 @@ def trip_info(trip_id: str = typer.Argument(...)) -> None:
     cfg = TripConfig.load(trip_dir / "trip.yaml")
 
     with connect(db_path) as conn:
-        asset_count = conn.execute(
-            "SELECT COUNT(*) FROM assets WHERE trip_id=?", (trip_id,)
+        asset_count = conn.execute("SELECT COUNT(*) FROM assets WHERE trip_id=?", (trip_id,)).fetchone()[0]
+        day_count = conn.execute("SELECT COUNT(*) FROM days WHERE trip_id=?", (trip_id,)).fetchone()[0]
+        event_count = conn.execute("SELECT COUNT(*) FROM events WHERE trip_id=?", (trip_id,)).fetchone()[0]
+        embedded = conn.execute(
+            "SELECT COUNT(*) FROM asset_features WHERE embedding IS NOT NULL AND asset_id IN "
+            "(SELECT id FROM assets WHERE trip_id=?)", (trip_id,)
         ).fetchone()[0]
-        day_count = conn.execute(
-            "SELECT COUNT(*) FROM days WHERE trip_id=?", (trip_id,)
-        ).fetchone()[0]
-        event_count = conn.execute(
-            "SELECT COUNT(*) FROM events WHERE trip_id=?", (trip_id,)
-        ).fetchone()[0]
+        clusters = conn.execute("SELECT COUNT(*) FROM near_duplicate_clusters WHERE trip_id=?", (trip_id,)).fetchone()[0]
 
     console.print(Panel(
         f"[bold]{cfg.trip.title}[/bold]\n"
         f"Timezone: {cfg.trip.timezone}\n"
-        f"Assets:   {asset_count}\n"
+        f"Assets:   {asset_count}  ({embedded} embedded)\n"
         f"Days:     {day_count}\n"
-        f"Events:   {event_count}",
+        f"Events:   {event_count}\n"
+        f"Dup clusters: {clusters}",
         title=f"Trip: {trip_id}",
     ))
 
@@ -161,7 +163,6 @@ def trip_info(trip_id: str = typer.Argument(...)) -> None:
 # ---------------------------------------------------------------------------
 # ingest commands
 # ---------------------------------------------------------------------------
-
 
 @ingest_app.command("photos")
 def ingest_photos(
@@ -171,84 +172,82 @@ def ingest_photos(
     """Scan photo directories, extract EXIF, generate derivatives, and store in DB."""
     from travelogue.config import TripConfig
     from travelogue.ingest.photos import ingest_photo_dirs
+    import logging
+    log = logging.getLogger("travelogue.cli")
 
     trip_dir, db_path = require_trip(trip_id)
     cfg = TripConfig.load(trip_dir / "trip.yaml")
-
-    console.print(f"[bold]Ingesting photos for trip:[/bold] {trip_id}")
-    ingest_photo_dirs(trip_id, trip_dir, db_path, cfg, dry_run=dry_run, console=console)
+    log.info("Ingesting photos for trip: %s", trip_id)
+    ingest_photo_dirs(trip_id, trip_dir, db_path, cfg, dry_run=dry_run)
 
 
 @ingest_app.command("journals")
-def ingest_journals(
-    trip_id: str = typer.Argument(...),
-) -> None:
+def ingest_journals(trip_id: str = typer.Argument(...)) -> None:
     """Parse markdown journals and store in DB."""
     from travelogue.config import TripConfig
     from travelogue.ingest.journals import ingest_journal_dirs
+    import logging
+    log = logging.getLogger("travelogue.cli")
 
     trip_dir, db_path = require_trip(trip_id)
     cfg = TripConfig.load(trip_dir / "trip.yaml")
-
-    console.print(f"[bold]Ingesting journals for trip:[/bold] {trip_id}")
-    ingest_journal_dirs(trip_id, trip_dir, db_path, cfg, console=console)
+    log.info("Ingesting journals for trip: %s", trip_id)
+    ingest_journal_dirs(trip_id, trip_dir, db_path, cfg)
 
 
 # ---------------------------------------------------------------------------
 # analyze commands
 # ---------------------------------------------------------------------------
 
-
 @analyze_app.command("all")
 def analyze_all(
     trip_id: str = typer.Argument(...),
-    skip_embeddings: bool = typer.Option(
-        False, "--skip-embeddings", help="Skip Gemini embedding calls (use cached only)"
-    ),
+    skip_embeddings: bool = typer.Option(False, "--skip-embeddings"),
 ) -> None:
     """Run the full analysis pipeline: embeddings, dedup, segmentation, clustering."""
+    import logging
     from travelogue.analysis.embeddings import compute_embeddings
     from travelogue.analysis.dedup import cluster_duplicates
     from travelogue.analysis.structure import segment_trip
     from travelogue.analysis.subjects import cluster_subjects
     from travelogue.config import TripConfig
 
+    log = logging.getLogger("travelogue.cli")
     trip_dir, db_path = require_trip(trip_id)
     cfg = TripConfig.load(trip_dir / "trip.yaml")
 
     if not skip_embeddings:
-        console.print("[bold]Stage 2a:[/bold] Computing Gemini embeddings…")
-        compute_embeddings(trip_id, trip_dir, db_path, cfg, console=console)
+        log.info("Stage 2a: Computing Gemini embeddings")
+        compute_embeddings(trip_id, trip_dir, db_path, cfg)
 
-    console.print("[bold]Stage 2b:[/bold] Clustering duplicates…")
-    cluster_duplicates(trip_id, db_path, console=console)
+    log.info("Stage 2b: Clustering duplicates")
+    cluster_duplicates(trip_id, db_path)
 
-    console.print("[bold]Stage 2c/d:[/bold] Segmenting days, events, places…")
-    segment_trip(trip_id, db_path, cfg, console=console)
+    log.info("Stage 2c/d: Segmenting days, events, places")
+    segment_trip(trip_id, db_path, cfg)
 
-    console.print("[bold]Stage 2e:[/bold] Clustering subjects…")
-    cluster_subjects(trip_id, db_path, console=console)
+    log.info("Stage 2e: Clustering subjects")
+    cluster_subjects(trip_id, db_path)
 
-    console.print("[green]Analysis complete.[/green]")
+    log.info("Analysis complete")
 
 
 @analyze_app.command("embeddings")
-def analyze_embeddings(
-    trip_id: str = typer.Argument(...),
-) -> None:
+def analyze_embeddings(trip_id: str = typer.Argument(...)) -> None:
     """Compute (or refresh) Gemini embeddings for all un-embedded assets."""
+    import logging
     from travelogue.analysis.embeddings import compute_embeddings
     from travelogue.config import TripConfig
 
     trip_dir, db_path = require_trip(trip_id)
     cfg = TripConfig.load(trip_dir / "trip.yaml")
-    compute_embeddings(trip_id, trip_dir, db_path, cfg, console=console)
+    logging.getLogger("travelogue.cli").info("Computing embeddings for trip: %s", trip_id)
+    compute_embeddings(trip_id, trip_dir, db_path, cfg)
 
 
 # ---------------------------------------------------------------------------
 # enrich command
 # ---------------------------------------------------------------------------
-
 
 @app.command("enrich")
 def enrich(
@@ -256,39 +255,37 @@ def enrich(
     force: bool = typer.Option(False, "--force", help="Rerun even if cached"),
 ) -> None:
     """Call Gemini to generate day/event summaries, titles, and subject labels."""
+    import logging
     from travelogue.ai.gemini import enrich_trip
     from travelogue.config import TripConfig
 
     trip_dir, db_path = require_trip(trip_id)
     cfg = TripConfig.load(trip_dir / "trip.yaml")
-    console.print(f"[bold]AI enrichment for trip:[/bold] {trip_id}")
-    enrich_trip(trip_id, trip_dir, db_path, cfg, force=force, console=console)
+    logging.getLogger("travelogue.cli").info("AI enrichment for trip: %s", trip_id)
+    enrich_trip(trip_id, trip_dir, db_path, cfg, force=force)
 
 
 # ---------------------------------------------------------------------------
 # publish command
 # ---------------------------------------------------------------------------
 
-
 @app.command("publish")
-def publish(
-    trip_id: str = typer.Argument(...),
-) -> None:
+def publish(trip_id: str = typer.Argument(...)) -> None:
     """Compile the trip graph and render the static site."""
+    import logging
     from travelogue.publish.renderer import render_site
     from travelogue.config import TripConfig
 
     trip_dir, db_path = require_trip(trip_id)
     cfg = TripConfig.load(trip_dir / "trip.yaml")
-    console.print(f"[bold]Publishing trip:[/bold] {trip_id}")
-    render_site(trip_id, trip_dir, db_path, cfg, console=console)
+    logging.getLogger("travelogue.cli").info("Publishing trip: %s", trip_id)
+    render_site(trip_id, trip_dir, db_path, cfg)
     console.print(f"[green]Site written to:[/green] {trip_dir / 'publish'}")
 
 
 # ---------------------------------------------------------------------------
 # serve command
 # ---------------------------------------------------------------------------
-
 
 @app.command("serve")
 def serve(
@@ -297,13 +294,15 @@ def serve(
 ) -> None:
     """Start a local preview server for the generated site."""
     from travelogue.deploy.preview import serve_site
+    import logging
 
     trip_dir, _ = require_trip(trip_id)
     publish_dir = trip_dir / "publish"
     if not publish_dir.exists() or not any(publish_dir.iterdir()):
         console.print(f"[yellow]No published site found. Run:[/yellow] travelogue publish {trip_id}")
         raise typer.Exit(1)
-    console.print(f"[bold]Serving {trip_id} at[/bold] http://localhost:{port}")
+    logging.getLogger("travelogue.cli").info("Serving %s at http://localhost:%d", trip_id, port)
+    console.print(f"[bold]Serving[/bold] http://localhost:{port}  (Ctrl-C to stop)")
     serve_site(publish_dir, port=port)
 
 
@@ -311,23 +310,21 @@ def serve(
 # review command
 # ---------------------------------------------------------------------------
 
-
 @app.command("review")
-def review(
-    trip_id: str = typer.Argument(...),
-) -> None:
+def review(trip_id: str = typer.Argument(...)) -> None:
     """Generate a review report highlighting low-confidence items."""
     from travelogue.publish.compiler import generate_review_report
+    import logging
 
     trip_dir, db_path = require_trip(trip_id)
     report_path = generate_review_report(trip_id, trip_dir, db_path)
-    console.print(f"[green]Review report written to:[/green] {report_path}")
+    logging.getLogger("travelogue.cli").info("Review report written to: %s", report_path)
+    console.print(f"[green]Review report:[/green] {report_path}")
 
 
 # ---------------------------------------------------------------------------
 # version command
 # ---------------------------------------------------------------------------
-
 
 @app.command("version")
 def version_cmd() -> None:

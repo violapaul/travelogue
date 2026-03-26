@@ -14,16 +14,17 @@ import time
 from pathlib import Path
 from typing import Any
 
+import logging
+
 from google import genai
 from google.genai import types as genai_types
 from pydantic import BaseModel
-from rich.console import Console
-from rich.progress import track
 
 from travelogue.ai.cache import get_cached, make_hash, save_artifact
 from travelogue.config import TripConfig
 from travelogue.db import connect
 
+log = logging.getLogger(__name__)
 PROVIDER = "gemini"
 DEFAULT_MODEL = "gemini-2.0-flash"
 RETRY_DELAYS = [2, 5, 15]
@@ -378,51 +379,41 @@ def enrich_trip(
     db_path: Path,
     cfg: TripConfig,
     force: bool = False,
-    console: Console | None = None,
 ) -> None:
     """Run all AI enrichment tasks for a trip."""
-    if console is None:
-        console = Console()
-
     client = _get_client()
     gemini_cfg = cfg.ai.providers.get("gemini")
     model = gemini_cfg.model if gemini_cfg else DEFAULT_MODEL
-
     tasks = cfg.ai.tasks
 
-    # Days
     if tasks.summarize_days:
         with connect(db_path) as conn:
             days = [dict(r) for r in conn.execute(
-                "SELECT id, local_date FROM days WHERE trip_id=? ORDER BY local_date",
-                (trip_id,),
+                "SELECT id, local_date FROM days WHERE trip_id=? ORDER BY local_date", (trip_id,)
             ).fetchall()]
-        console.print(f"  Summarizing {len(days)} days…")
+        log.info("Summarizing %d days", len(days))
         for i, day in enumerate(days):
-            console.print(f"  [{i+1}/{len(days)}] day {day['local_date']}…")
+            log.info("[%d/%d] Summarizing day %s", i + 1, len(days), day["local_date"])
             _summarize_day(client, model, db_path, trip_id, day, trip_dir, force=force)
 
-    # Events
     if tasks.summarize_events:
         with connect(db_path) as conn:
             events = [dict(r) for r in conn.execute(
-                "SELECT id, start_time_local, end_time_local FROM events WHERE trip_id=?",
-                (trip_id,),
+                "SELECT id, start_time_local, end_time_local FROM events WHERE trip_id=?", (trip_id,)
             ).fetchall()]
-        console.print(f"  Labeling {len(events)} events…")
+        log.info("Labeling %d events", len(events))
         for i, event in enumerate(events):
-            console.print(f"  [{i+1}/{len(events)}] event {event['id']} at {event['start_time_local']}…")
+            log.info("[%d/%d] Labeling event %s", i + 1, len(events), event["start_time_local"])
             _label_event(client, model, db_path, trip_id, event, trip_dir, force=force)
 
-    # Subject clusters
     if tasks.label_subjects:
         with connect(db_path) as conn:
             clusters = [dict(r) for r in conn.execute(
                 "SELECT id FROM subject_clusters WHERE trip_id=?", (trip_id,)
             ).fetchall()]
-        console.print(f"  Labeling {len(clusters)} subject clusters…")
+        log.info("Labeling %d subject clusters", len(clusters))
         for i, cluster in enumerate(clusters):
-            console.print(f"  [{i+1}/{len(clusters)}] cluster {cluster['id']}…")
+            log.info("[%d/%d] Labeling cluster %s", i + 1, len(clusters), cluster["id"])
             _label_subject_cluster(client, model, db_path, trip_id, cluster, trip_dir, force=force)
 
-    console.print("[green]AI enrichment complete.[/green]")
+    log.info("AI enrichment complete")

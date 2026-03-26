@@ -3,16 +3,18 @@
 from __future__ import annotations
 
 import json
+import logging
 import shutil
 from pathlib import Path
 from typing import Any
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
-from rich.console import Console
 
 from travelogue.config import TripConfig
 from travelogue.publish.compiler import build_trip_context
 from travelogue.publish.maps import generate_map_data
+
+log = logging.getLogger(__name__)
 
 
 def _assets_dir() -> Path:
@@ -25,12 +27,8 @@ def render_site(
     trip_dir: Path,
     db_path: Path,
     cfg: TripConfig,
-    console: Console | None = None,
 ) -> None:
     """Compile and render the full static site to trip_dir/publish/."""
-    if console is None:
-        console = Console()
-
     publish_dir = trip_dir / "publish"
     publish_dir.mkdir(parents=True, exist_ok=True)
 
@@ -44,11 +42,15 @@ def render_site(
     env.filters["datefmt"] = _datefmt
     env.filters["timefmt"] = _timefmt
 
-    console.print("  Building trip context…")
+    log.info("Building trip context")
     ctx = build_trip_context(trip_id, trip_dir, db_path, cfg)
+    log.info("  %d days, %d events", len(ctx["days"]),
+             sum(len(d["events"]) for d in ctx["days"]))
 
-    console.print("  Generating map data…")
+    log.info("Generating map data")
     map_data = generate_map_data(trip_id, trip_dir, db_path, ctx)
+    log.info("  %d map markers, %d GPX traces",
+             len(map_data["markers"]["features"]), len(map_data["gpx_traces"]))
 
     # Copy static assets
     if static_dir.exists():
@@ -113,7 +115,8 @@ def render_site(
             _render_page(env, "event.html", events_dir / f"{event['id']}.html",
                          {**shared, "event": event, "day": day})
 
-    console.print(f"  [green]Rendered {_count_pages(ctx)} pages.[/green]")
+    n_pages = _count_pages(ctx)
+    log.info("Rendered %d pages to %s", n_pages, publish_dir)
 
 
 def _render_page(env: Environment, template_name: str, dest: Path, ctx: dict) -> None:
