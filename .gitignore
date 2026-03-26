@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.venv/
+venv/
+env/
+
+# Project-specific: trip workspaces contain originals and generated outputs
+trips/*/imports/
+trips/*/working/
+trips/*/publish/
+trips/*/generated/
+
+# Keep override and journal sources (human-authored)
+!trips/*/overrides/
+!trips/*/journals/
+
+# SQLite databases in working dirs
+trips/*/working/*.db
+
+# Environment / secrets
+.env
+*.env
+
+# macOS
+.DS_Store
+
+# Editor
+.idea/
+.vscode/
+*.swp

@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Map &mdash; {{ trip_title }}{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css">
+{% endblock %}
+
+{% block content %}
+<div class="map-page">
+  <div class="map-controls">
+    <h2>{{ trip_title }}</h2>
+    <div class="map-filter-bar">
+      <button class="map-filter active" data-filter="all">All days</button>
+      {% for day in days %}
+      <button class="map-filter" data-filter="{{ day.id }}">{{ day.date }}</button>
+      {% endfor %}
+    </div>
+  </div>
+  <div id="map" class="map-container"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js"></script>
+<script src="/map_data.js"></script>
+<script src="/static/map.js"></script>
+{% endblock %}

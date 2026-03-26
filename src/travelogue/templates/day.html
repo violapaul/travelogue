@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}{{ day.title or day.date }} &mdash; {{ trip_title }}{% endblock %}
+
+{% block content %}
+<div class="page-wrapper">
+  <header class="page-header">
+    <p class="breadcrumb"><a href="/story.html">Story</a> &rsaquo; Day</p>
+    <h1>{{ day.title or day.date | datefmt }}</h1>
+    <p class="page-date">{{ day.date | datefmt }}</p>
+  </header>
+
+  {% if day.narrative %}
+  <div class="narrative day-narrative">{{ day.narrative }}</div>
+  {% endif %}
+
+  {% for event in day.events %}
+  <section class="event-section" id="event-{{ event.id }}">
+    <div class="event-header">
+      {% if event.title %}
+      <h2><a href="/events/{{ event.id }}.html">{{ event.title }}</a></h2>
+      {% endif %}
+      <p class="event-time">{{ event.start_time | timefmt }}{% if event.end_time %} &ndash; {{ event.end_time | timefmt }}{% endif %} &middot; {{ event.asset_count }} photos</p>
+    </div>
+
+    {% if event.hero and event.hero.web_path %}
+    <div class="event-hero">
+      <img src="/{{ event.hero.web_path }}" alt="{{ event.title }}" loading="lazy">
+    </div>
+    {% endif %}
+
+    {% if event.narrative %}
+    <div class="narrative">{{ event.narrative }}</div>
+    {% endif %}
+
+    {% if event.assets %}
+    <div class="image-grid">
+      {% for asset in event.assets %}
+      {% if asset.thumbnail_path %}
+      <div class="grid-item">
+        <img src="/{{ asset.thumbnail_path }}" alt="" loading="lazy"
+             onclick="openLightbox('{{ asset.web_path }}')">
+        {% if asset.alt_count > 0 %}
+        <span class="alt-badge">+{{ asset.alt_count }}</span>
+        {% endif %}
+      </div>
+      {% endif %}
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if event.subject_clusters %}
+    <div class="subject-clusters">
+      <h4>In this event</h4>
+      {% for cluster in event.subject_clusters %}
+      <span class="cluster-tag">{{ cluster.label or cluster.cluster_type }}</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </section>
+  {% endfor %}
+</div>
+
+<div class="lightbox" id="lightbox" hidden>
+  <div class="lightbox-overlay" onclick="closeLightbox()"></div>
+  <div class="lightbox-content">
+    <button class="lightbox-close" onclick="closeLightbox()">&times;</button>
+    <img id="lightbox-img" src="" alt="">
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/lightbox.js"></script>
+{% endblock %}

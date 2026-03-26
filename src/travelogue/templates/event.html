@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}{{ event.title or "Event" }} &mdash; {{ trip_title }}{% endblock %}
+
+{% block content %}
+<div class="page-wrapper">
+  <header class="page-header">
+    <p class="breadcrumb">
+      <a href="/story.html">Story</a> &rsaquo;
+      <a href="/days/{{ day.date }}.html">{{ day.title or day.date }}</a> &rsaquo;
+      Event
+    </p>
+    <h1>{{ event.title or "Event" }}</h1>
+    <p class="page-date">
+      {{ event.start_time | timefmt }}{% if event.end_time %} &ndash; {{ event.end_time | timefmt }}{% endif %}
+      &middot; {{ event.asset_count }} photos
+    </p>
+  </header>
+
+  {% if event.hero and event.hero.web_path %}
+  <div class="event-hero-full">
+    <img src="/{{ event.hero.web_path }}" alt="{{ event.title }}" loading="lazy">
+  </div>
+  {% endif %}
+
+  {% if event.narrative %}
+  <div class="narrative event-narrative">{{ event.narrative }}</div>
+  {% endif %}
+
+  {% if event.subject_clusters %}
+  <div class="subject-clusters-bar">
+    {% for cluster in event.subject_clusters %}
+    <span class="cluster-tag">{{ cluster.label or cluster.cluster_type }}</span>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="image-grid image-grid-large">
+    {% for asset in event.assets %}
+    {% if asset.web_path %}
+    <div class="grid-item">
+      <img src="/{{ asset.web_path }}" alt="" loading="lazy"
+           onclick="openLightboxFromGrid({{ loop.index0 }})">
+      {% if asset.alt_count > 0 %}
+      <span class="alt-badge">+{{ asset.alt_count }} similar</span>
+      {% endif %}
+    </div>
+    {% endif %}
+    {% endfor %}
+  </div>
+</div>
+
+<div class="lightbox" id="lightbox" hidden>
+  <div class="lightbox-overlay" onclick="closeLightbox()"></div>
+  <div class="lightbox-content">
+    <button class="lightbox-close" onclick="closeLightbox()">&times;</button>
+    <button class="lightbox-prev" onclick="lightboxNav(-1)">&#8249;</button>
+    <img id="lightbox-img" src="" alt="">
+    <button class="lightbox-next" onclick="lightboxNav(1)">&#8250;</button>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const IMAGES = [
+  {% for asset in event.assets %}
+  {% if asset.web_path %}
+  "/{{ asset.web_path }}",
+  {% endif %}
+  {% endfor %}
+];
+</script>
+<script src="/static/lightbox.js"></script>
+{% endblock %}

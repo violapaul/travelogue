@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero">
+  {% if days and days[0].events and days[0].events[0].hero %}
+  {% set hero_img = days[0].events[0].hero %}
+  <div class="hero-bg" style="background-image: url('{{ hero_img.web_path }}')"></div>
+  {% endif %}
+  <div class="hero-content">
+    <h1>{{ trip_title }}</h1>
+    {% if days %}
+    <p class="hero-dates">
+      {{ days[0].date | datefmt }}
+      {% if days|length > 1 %} &ndash; {{ days[-1].date | datefmt }}{% endif %}
+    </p>
+    {% endif %}
+    {% if days %}
+    <p class="hero-stats">{{ days|length }} days &middot; {{ total_assets }} photos</p>
+    {% endif %}
+  </div>
+  <div class="hero-scroll-hint">&#8595;</div>
+</section>
+
+<div class="page-wrapper">
+  <nav class="view-nav">
+    <a href="/story.html" class="view-card">
+      <span class="view-icon">&#9776;</span>
+      <span class="view-label">Story</span>
+    </a>
+    <a href="/map.html" class="view-card">
+      <span class="view-icon">&#9711;</span>
+      <span class="view-label">Map</span>
+    </a>
+    <a href="/everything.html" class="view-card">
+      <span class="view-icon">&#9783;</span>
+      <span class="view-label">Everything</span>
+    </a>
+    <a href="/slideshow.html" class="view-card">
+      <span class="view-icon">&#9654;</span>
+      <span class="view-label">Slideshow</span>
+    </a>
+  </nav>
+
+  <section class="trip-overview">
+    <h2>The Trip</h2>
+    <div class="days-strip">
+      {% for day in days %}
+      <a class="day-thumb" href="/days/{{ day.date }}.html">
+        {% if day.events and day.events[0].hero and day.events[0].hero.thumbnail_path %}
+        <img src="/{{ day.events[0].hero.thumbnail_path }}" alt="{{ day.title or day.date }}" loading="lazy">
+        {% else %}
+        <div class="day-thumb-placeholder"></div>
+        {% endif %}
+        <span class="day-label">
+          <strong>Day {{ loop.index }}</strong><br>
+          {{ day.date }}
+        </span>
+      </a>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+{% endblock %}

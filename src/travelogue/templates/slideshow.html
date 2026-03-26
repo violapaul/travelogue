@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Slideshow &mdash; {{ trip_title }}{% endblock %}
+
+{% block content %}
+<div class="slideshow-page" id="slideshow">
+  <div class="slideshow-stage">
+    <img id="slideshow-img" src="" alt="">
+    <div class="slideshow-caption" id="slideshow-caption"></div>
+  </div>
+
+  <div class="slideshow-controls">
+    <button id="btn-prev" onclick="slideNav(-1)" title="Previous (&#8592;)">&#8249;</button>
+    <div class="slideshow-info">
+      <span id="slide-counter">1 / {{ total_assets }}</span>
+      <span class="slideshow-sep">&middot;</span>
+      <button id="btn-auto" onclick="toggleAuto()">&#9654; Auto</button>
+    </div>
+    <button id="btn-next" onclick="slideNav(1)" title="Next (&#8594;)">&#8250;</button>
+  </div>
+
+  <div class="slideshow-thumbnails" id="slideshow-thumbnails">
+    {% for day in days %}
+    {% for event in day.events %}
+    {% for asset in event.assets %}
+    {% if asset.web_path %}
+    <div class="slide-thumb {% if loop.index == 1 and loop.index0 == 0 %}active{% endif %}"
+         data-src="/{{ asset.web_path }}"
+         data-caption="{{ event.title or '' }} &middot; {{ day.date }}"
+         onclick="goToSlide(slideThumbIndex(this))">
+      {% if asset.thumbnail_path %}
+      <img src="/{{ asset.thumbnail_path }}" alt="" loading="lazy">
+      {% endif %}
+    </div>
+    {% endif %}
+    {% endfor %}
+    {% endfor %}
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/slideshow.js"></script>
+{% endblock %}

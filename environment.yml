@@ -1,0 +1,34 @@
+name: travelogue
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.12
+  # Core scientific stack -- use conda for prebuilt binaries
+  - numpy
+  - scikit-learn
+  - hdbscan
+  - scipy
+  # Image processing
+  - pillow
+  # CLI / config / templating
+  - pyyaml
+  - jinja2
+  - rich
+  # Geocoding
+  - reverse_geocoder
+  # Dev tools
+  - pytest
+  - pytest-cov
+  - ruff
+  # pip-only packages (no conda-forge builds)
+  - pip
+  - pip:
+    - typer
+    - pydantic>=2.7
+    - pillow-heif
+    - imagehash
+    - exifread
+    - markdown-it-py
+    - google-genai>=1.0
+    - -e .

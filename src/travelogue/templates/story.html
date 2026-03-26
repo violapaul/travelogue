@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Story &mdash; {{ trip_title }}{% endblock %}
+
+{% block content %}
+<div class="page-wrapper story-page">
+  <header class="page-header">
+    <h1>{{ trip_title }}</h1>
+    <p class="page-subtitle">Day by Day</p>
+  </header>
+
+  {% for day in days %}
+  <article class="day-article" id="day-{{ day.date }}">
+    <header class="day-header">
+      <div class="day-number">Day {{ loop.index }}</div>
+      <h2 class="day-title">
+        <a href="/days/{{ day.date }}.html">{{ day.title or day.date | datefmt }}</a>
+      </h2>
+      {% if day.title and day.title != day.date %}
+      <p class="day-date">{{ day.date | datefmt }}</p>
+      {% endif %}
+    </header>
+
+    {% if day.narrative %}
+    <div class="narrative">{{ day.narrative }}</div>
+    {% endif %}
+
+    {% for event in day.events %}
+    <section class="event-section" id="event-{{ event.id }}">
+      {% if event.hero and event.hero.web_path %}
+      <div class="event-hero">
+        <img src="/{{ event.hero.web_path }}" alt="{{ event.title }}" loading="lazy">
+        {% if event.hero.alt_count > 0 %}
+        <button class="alt-count" data-event="{{ event.id }}">+{{ event.hero.alt_count }} more</button>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      <div class="event-body">
+        {% if event.title %}
+        <h3><a href="/events/{{ event.id }}.html">{{ event.title }}</a></h3>
+        {% endif %}
+        <p class="event-time">{{ event.start_time | timefmt }}{% if event.end_time %} &ndash; {{ event.end_time | timefmt }}{% endif %}</p>
+        {% if event.narrative %}
+        <p class="event-narrative">{{ event.narrative }}</p>
+        {% endif %}
+      </div>
+
+      {% if event.assets|length > 1 %}
+      <div class="image-strip">
+        {% for asset in event.assets[1:7] %}
+        {% if asset.thumbnail_path %}
+        <div class="strip-item">
+          <img src="/{{ asset.thumbnail_path }}" alt="" loading="lazy">
+          {% if asset.alt_count > 0 %}
+          <span class="alt-badge">+{{ asset.alt_count }}</span>
+          {% endif %}
+        </div>
+        {% endif %}
+        {% endfor %}
+        {% if event.assets|length > 7 %}
+        <div class="strip-item strip-more">
+          <a href="/events/{{ event.id }}.html">+{{ event.assets|length - 7 }} more</a>
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      {% if event.subject_clusters %}
+      <div class="subject-clusters">
+        {% for cluster in event.subject_clusters %}
+        <span class="cluster-tag">{{ cluster.label or cluster.cluster_type }}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </section>
+    {% endfor %}
+  </article>
+  {% endfor %}
+</div>
+
+<!-- Alternate images lightbox -->
+<div class="lightbox" id="lightbox" hidden>
+  <div class="lightbox-overlay" onclick="closeLightbox()"></div>
+  <div class="lightbox-content">
+    <button class="lightbox-close" onclick="closeLightbox()">&times;</button>
+    <div class="lightbox-images" id="lightbox-images"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/lightbox.js"></script>
+{% endblock %}

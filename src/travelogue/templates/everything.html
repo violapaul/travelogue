@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Everything &mdash; {{ trip_title }}{% endblock %}
+
+{% block content %}
+<div class="everything-page">
+  <header class="everything-header page-wrapper">
+    <h1>{{ trip_title }}</h1>
+    <p class="everything-subtitle">The full story, all at once.</p>
+  </header>
+
+  {% for day in days %}
+  <div class="everything-day" id="eday-{{ day.date }}">
+    <div class="page-wrapper">
+      <div class="everything-day-header">
+        <div class="day-number-large">{{ loop.index }}</div>
+        <div class="day-header-text">
+          <h2>{{ day.title or day.date | datefmt }}</h2>
+          <p class="day-date-small">{{ day.date | datefmt }}</p>
+        </div>
+      </div>
+
+      {% if day.narrative %}
+      <div class="narrative everything-narrative">{{ day.narrative }}</div>
+      {% endif %}
+    </div>
+
+    {% for event in day.events %}
+    <div class="everything-event">
+      {% if event.hero and event.hero.web_path %}
+      <div class="everything-hero">
+        <img src="/{{ event.hero.web_path }}" alt="{{ event.title }}" loading="lazy">
+        {% if event.hero.alt_count > 0 %}
+        <div class="everything-hero-alts">
+          <button onclick="openLightbox('/{{ event.hero.web_path }}')">{{ event.hero.alt_count }} similar photos</button>
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      <div class="page-wrapper">
+        {% if event.title %}
+        <h3 class="event-title-inline">
+          <a href="/events/{{ event.id }}.html">{{ event.title }}</a>
+        </h3>
+        {% endif %}
+        <p class="event-meta-inline">
+          {{ event.start_time | timefmt }}
+          &middot; {{ event.asset_count }} photos
+        </p>
+        {% if event.narrative %}
+        <p class="event-narrative">{{ event.narrative }}</p>
+        {% endif %}
+
+        {% if event.subject_clusters %}
+        <div class="subject-clusters">
+          {% for cluster in event.subject_clusters %}
+          <span class="cluster-tag">{{ cluster.label or cluster.cluster_type }}</span>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+
+      {% if event.assets|length > 1 %}
+      <div class="everything-strip page-wrapper">
+        {% for asset in event.assets[1:9] %}
+        {% if asset.thumbnail_path %}
+        <div class="strip-item" onclick="openLightbox('/{{ asset.web_path or asset.thumbnail_path }}')">
+          <img src="/{{ asset.thumbnail_path }}" alt="" loading="lazy">
+          {% if asset.alt_count > 0 %}
+          <span class="alt-badge">+{{ asset.alt_count }}</span>
+          {% endif %}
+        </div>
+        {% endif %}
+        {% endfor %}
+        {% if event.assets|length > 9 %}
+        <div class="strip-item strip-more">
+          <a href="/events/{{ event.id }}.html">+{{ event.assets|length - 9 }}<br>more</a>
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+</div>
+
+<div class="lightbox" id="lightbox" hidden>
+  <div class="lightbox-overlay" onclick="closeLightbox()"></div>
+  <div class="lightbox-content">
+    <button class="lightbox-close" onclick="closeLightbox()">&times;</button>
+    <img id="lightbox-img" src="" alt="">
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/lightbox.js"></script>
+{% endblock %}
